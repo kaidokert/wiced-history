@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 #include "command_console_wifi.h"
 
@@ -154,7 +177,7 @@ static unsigned int n_phyrates_kb[] = {7200, 14400, 21700, 28900, 43300, 57800, 
  *
  * @return  0 for success, otherwise error
  */
-int process_join_security( int argc, char* ssid, wiced_security_t auth_type, char* key_string, uint8_t *key_length, uint8_t *wep_key_buffer)
+int process_join_security( int argc, char* ssid, wiced_security_t auth_type, char* key_string, uint8_t *key_length, uint8_t *wep_key_buffer, uint8_t** security_key)
 {
 
     if ( auth_type == WICED_SECURITY_UNKNOWN )
@@ -194,9 +217,17 @@ int process_join_security( int argc, char* ssid, wiced_security_t auth_type, cha
 
         temp_key_length = 4*(2 + temp_key_length);
         *key_length = temp_key_length;
+
+        *security_key = wep_key_buffer;
     }
     else if ( ( auth_type != WICED_SECURITY_OPEN ) && ( argc < 4 ) )
 #else
+    if ( auth_type == WICED_SECURITY_WEP_PSK )
+    {
+        WPRINT_MACRO(("WEP not supported; Define the flag ENABLE_WEP in the build to enable it\n"));
+        return ERR_BAD_ARG;
+    }
+
     if ( ( auth_type != WICED_SECURITY_OPEN ) && ( argc < 4 ) )
 #endif /* ENABLE_WEP */
     {
@@ -237,8 +268,9 @@ int join( int argc, char* argv[] )
     {
         return ERR_INSUFFICENT_ARGS;
     }
+
     security_key = (uint8_t*)argv[3];
-    result = process_join_security(argc, ssid, auth_type, argv[3], &key_length, wep_key_buffer);
+    result = process_join_security(argc, ssid, auth_type, argv[3], &key_length, wep_key_buffer, &security_key);
     if (result == ERR_CMD_OK)
     {
         if ( argc == 7 )
@@ -394,7 +426,17 @@ int wifi_join(char* ssid, uint8_t ssid_length, wiced_security_t auth_type, uint8
 
     if (wwd_wifi_is_ready_to_transceive(WWD_STA_INTERFACE) == WWD_SUCCESS)
     {
+        WPRINT_APP_INFO(("STA already joined; use leave command first\n"));
         return ERR_CMD_OK;
+    }
+
+    if ( wwd_wifi_is_ready_to_transceive( WWD_AP_INTERFACE ) == WWD_SUCCESS )
+    {
+        WPRINT_APP_INFO(("AP will be moved to the STA assoc channel"));
+        if ( 0 == console_prompt_confirm( ) )
+        {
+            return ERR_CMD_OK;
+        }
     }
 
     /* Read config */
@@ -489,7 +531,7 @@ int join_adhoc( int argc, char* argv[] )
         return ERR_TOO_MANY_ARGS;
     }
 
-    result = process_join_security(argc, ssid, auth_type, argv[3], &key_length, wep_key_buffer);
+    result = process_join_security(argc, ssid, auth_type, argv[3], &key_length, wep_key_buffer, &security_key);
     if (result == ERR_CMD_OK)
         return wifi_join_adhoc( ssid, strlen(ssid), auth_type, security_key,
                 key_length, argv[4], argv[5], argv[6], argv[7]);
@@ -532,14 +574,14 @@ int join_specific( int argc, char* argv[] )
     if ( argc == 9 )
     {
         security_key = (uint8_t*)argv[5];
-        result = process_join_security(argc, ssid, auth_type, argv[5], &key_length, wep_key_buffer);
+        result = process_join_security(argc, ssid, auth_type, argv[5], &key_length, wep_key_buffer, &security_key);
         if (result == ERR_CMD_OK)
             return wifi_join_specific( ssid, strlen(ssid), auth_type, security_key, key_length, argv[2], argv[3], argv[6], argv[7], argv[8]);
     }
     else
     {
         security_key = (uint8_t*)argv[3];
-        result = process_join_security(argc, ssid, auth_type, argv[3], &key_length, wep_key_buffer);
+        result = process_join_security(argc, ssid, auth_type, argv[3], &key_length, wep_key_buffer, &security_key);
         if (result == ERR_CMD_OK)
             return wifi_join_specific( ssid, strlen(ssid), auth_type, security_key, key_length, argv[2], argv[3], NULL, NULL, NULL );
     }
@@ -721,6 +763,28 @@ parse_country_spec( char *spec, int8_t *ccode, int32_t *regrev )
     return ERR_CMD_OK;
 }
 
+int
+scan_disable( int argc, char* argv[] )
+{
+    int err = ERR_CMD_OK;
+    wiced_result_t result;
+    if ( argv[1][0] != '0' )
+    {
+        result = wiced_wifi_scan_disable( );
+    }
+    else
+    {
+        result = wiced_wifi_scan_enable( );
+    }
+
+    if ( WICED_SUCCESS != result )
+    {
+        printf("Failed scan %sable; result = %d\n", ( argv[1][0] != '0' ) ? "dis" : "en", result );
+    }
+
+    return err;
+}
+
 /*!
  ******************************************************************************
  * Scans for access points and prints out results
@@ -730,7 +794,9 @@ parse_country_spec( char *spec, int8_t *ccode, int32_t *regrev )
 
 int scan( int argc, char* argv[] )
 {
+    wiced_result_t result;
     record_count = 0;
+
     WPRINT_APP_INFO( ( "Waiting for scan results...\n" ) );
 
     WPRINT_APP_INFO( ("  # Type  BSSID              RSSI Rate Chan  Security               SSID\n" ) );
@@ -739,11 +805,15 @@ int scan( int argc, char* argv[] )
     /* Initialise the semaphore that will tell us when the scan is complete */
     wiced_rtos_init_semaphore(&scan_semaphore);
 
-    wiced_wifi_scan_networks(scan_result_handler, NULL );
-
-    /* Wait until scan is complete */
-    wiced_rtos_get_semaphore(&scan_semaphore, WICED_WAIT_FOREVER);
-
+    if ( ( result = wiced_wifi_scan_networks(scan_result_handler, NULL ) ) == WICED_SUCCESS )
+    {
+        /* Wait until scan is complete */
+        wiced_rtos_get_semaphore(&scan_semaphore, WICED_WAIT_FOREVER);
+    }
+    else
+    {
+        WPRINT_APP_INFO( ( "Error starting scan! Error=%d\n", result ) );
+    }
     wiced_rtos_deinit_semaphore(&scan_semaphore);
 
     /* Done! */
@@ -761,11 +831,13 @@ int scan( int argc, char* argv[] )
 
 int start_ap( int argc, char* argv[] )
 {
-    char* ssid = argv[1];
+    char* ssid                 = argv[1];
     wiced_security_t auth_type = str_to_authtype(argv[2]);
-    char* security_key = argv[3];
-    uint8_t channel = atoi(argv[4]);
+    char* security_key         = argv[3];
+    uint8_t  channel           = atoi(argv[4]);
+    uint32_t sta_channel       = 0;
     wiced_result_t result;
+    wwd_result_t   wwd_result;
     uint8_t pmk[DOT11_PMK_LEN + 8]; /* PMK storage must be 40 octets in length for use in various functions */
     platform_dct_wifi_config_t* dct_wifi_config;
     uint8_t  key_length = 0;
@@ -788,21 +860,10 @@ int start_ap( int argc, char* argv[] )
 
     if ( auth_type == WICED_SECURITY_OPEN )
     {
-        char c = 0;
-
-        WPRINT_APP_INFO(( "Open without any encryption [y or n]?\n" ));
-        while (1)
+        WPRINT_APP_INFO(( "Open without any encryption" ));
+        if ( 0 == console_prompt_confirm( ) )
         {
-            c = getchar();
-            if ( c == 'y' )
-            {
-                break;
-            }
-            if ( c == 'n' )
-            {
-                return ERR_CMD_OK;
-            }
-            WPRINT_APP_INFO(( "y or n\n" ));
+            return ERR_CMD_OK;
         }
     }
 
@@ -820,6 +881,19 @@ int start_ap( int argc, char* argv[] )
     {
         WPRINT_APP_INFO(("Error: WPA key too short\n" ));
         return ERR_UNKNOWN;
+    }
+
+    if ( wwd_wifi_is_ready_to_transceive( WWD_STA_INTERFACE ) == WWD_SUCCESS )
+    {
+        wwd_result = wwd_wifi_get_channel( WWD_STA_INTERFACE, &sta_channel );
+        if ( WWD_SUCCESS == wwd_result && sta_channel != channel )
+        {
+            WPRINT_APP_INFO(("AP will be started on same channel as STA (%lu); NOT (%d)", sta_channel, channel));
+            if ( 0 == console_prompt_confirm( ) )
+            {
+                return ERR_CMD_OK;
+            }
+        }
     }
 
     /* Read config */
@@ -1684,6 +1758,389 @@ int get_counters( int argc, char* argv[] )
     return ERR_CMD_OK;
 }
 
+#define WL_FORMAT_INT       0x00000001
+#define WL_FORMAT_UINT      0x00000002
+#define WL_FORMAT_STRING    0x00000004
+#define WL_FORMAT_HEX       0x00000010
+#define WL_FORMAT_BUFFER    0x00000020
+
+#define WL_FORMAT_LENGTH_SPECIFIER "-length="
+#define WL_FORMAT_IFC_SPECIFIER    "-ifc="
+#define WL_FORCE_IOCTL_SPECIFIER   "ioctl="
+
+typedef struct wl_command_format
+{
+    uint32_t flag;
+    const char* format_string;
+} wl_command_format_t;
+
+typedef struct wl_string_to_ioctl
+{
+    const char *command_name;
+    uint16_t   get_command_value;
+    uint16_t   set_command_value;
+} wl_string_to_ioctl_t;
+
+/* TODO: shrink the size of the wl command table by making this used more */
+int wl_formatted_command_handler( int argc, char* argv[] )
+{
+    int err                   = ERR_CMD_OK;
+    uint32_t format           = 0;
+    wiced_bool_t done_parsing = WICED_FALSE;
+    int cur_arg               = 1; /* start after wlf */
+    const char *command_name  = NULL;
+    const char *parsable_fmt  = NULL;
+    char *end_ptr             = NULL;
+    uint32_t   get_length     = 0;
+    uint32_t   buf_length     = 0;
+    int table_index           = 0;
+    wwd_result_t wwd_result   = WWD_SUCCESS;
+    wwd_interface_t interface = WWD_STA_INTERFACE;
+    wl_string_to_ioctl_t ioctl_scratch;
+    wl_string_to_ioctl_t *ioctl_entry = NULL;
+
+    const wl_command_format_t wlf_format_specifiers[] =
+    {
+        {WL_FORMAT_INT,       "-i"},
+        {WL_FORMAT_UINT,      "-ui"},
+        {WL_FORMAT_STRING,    "-s"},
+        {WL_FORMAT_HEX,       "-x"},
+        {WL_FORMAT_BUFFER,    "-b"},
+    };
+
+    /* map from command string to ioctl get and/or set value */
+    wl_string_to_ioctl_t ioctl_map[] =
+    {
+        { "up",             0,                    WLC_UP },
+        { "isup",           WLC_GET_UP,           0 },
+        { "down",           0,                    WLC_DOWN },
+        { "out",            0,                    WLC_OUT },
+        { "PM",             WLC_GET_PM,           WLC_SET_PM },
+        { "roam_trigger",   WLC_GET_ROAM_TRIGGER, WLC_SET_ROAM_TRIGGER },
+        { "roam_delta",     WLC_GET_ROAM_DELTA,   WLC_SET_ROAM_DELTA },
+        { "phytype",        WLC_GET_PHYTYPE,      0 },
+        { "scansuppress",   WLC_GET_SCANSUPPRESS, WLC_SET_SCANSUPPRESS },
+        { "dtim",           WLC_GET_DTIMPRD,      WLC_SET_DTIMPRD },
+        { "rate",           WLC_GET_RATE,         0 },
+        { "rateset",        WLC_GET_RATESET,      WLC_SET_RATESET },
+    };
+
+    if (argc == 1)
+    {
+        goto error;
+    }
+
+    /* parse any format specifiers */
+    while ( cur_arg < argc && done_parsing == WICED_FALSE )
+    {
+        wiced_bool_t match = WICED_FALSE;
+        done_parsing       = WICED_TRUE;
+        uint32_t flag      = 0;
+        if ( strlen( argv[cur_arg] ) > strlen( WL_FORMAT_LENGTH_SPECIFIER ) &&
+            0 == strncmp( argv[cur_arg], WL_FORMAT_LENGTH_SPECIFIER, strlen( WL_FORMAT_LENGTH_SPECIFIER ) ) )
+        {
+            parsable_fmt = argv[cur_arg];
+            parsable_fmt += strlen( WL_FORMAT_LENGTH_SPECIFIER );
+            get_length   = strtoul( parsable_fmt, &end_ptr, 10 );
+
+            match        = WICED_TRUE;
+        }
+        else if ( strlen( argv[cur_arg] ) > strlen( WL_FORMAT_IFC_SPECIFIER ) &&
+            0 == strncmp( argv[cur_arg], WL_FORMAT_IFC_SPECIFIER, strlen( WL_FORMAT_IFC_SPECIFIER ) ) )
+        {
+            parsable_fmt  = argv[cur_arg];
+            parsable_fmt += strlen( WL_FORMAT_IFC_SPECIFIER );
+            interface     = (wwd_interface_t)strtoul( parsable_fmt, &end_ptr, 10 );
+
+            /* check for invalid */
+            if ( WWD_INTERFACE_MAX <= interface )
+            {
+                printf("Interface %d exceeds or eq to %d max\n", interface, WWD_INTERFACE_MAX);
+                goto error;
+            }
+
+            match = WICED_TRUE;
+        }
+        else
+        {
+            for ( table_index = 0 ; table_index < sizeof(wlf_format_specifiers)/sizeof(wlf_format_specifiers[0]) ; table_index++ )
+            {
+                if ( strlen( argv[cur_arg] ) == strlen( wlf_format_specifiers[table_index].format_string ) &&
+                    0 == strncmp( argv[cur_arg], wlf_format_specifiers[table_index].format_string, strlen( wlf_format_specifiers[table_index].format_string ) ) )
+                {
+                    match = WICED_TRUE;
+                    flag = wlf_format_specifiers[table_index].flag;
+                    break;
+                }
+            }
+        }
+
+        if ( match == WICED_TRUE )
+        {
+            format      |= flag;
+            done_parsing = WICED_FALSE;
+            cur_arg++;
+        }
+    }
+
+    /* remember what the command is */
+    if ( cur_arg == argc )
+    {
+        /* there's no support for dumping out what we might be able to do in FW */
+        printf("Unsupported to dump out command list. (Compile with wl support and use wl)\n");
+        goto error;
+    }
+    command_name = argv[cur_arg];
+    cur_arg++;
+
+    /* length of buffer will be big enough for one uint32, but could be bigger */
+    buf_length = sizeof( uint32_t );
+    buf_length = MAX( buf_length, get_length );
+
+    /* force an ioctl to execute */
+    if ( 0 == strncmp( WL_FORCE_IOCTL_SPECIFIER, command_name, strlen(WL_FORCE_IOCTL_SPECIFIER) ) && strlen(command_name) > strlen(WL_FORCE_IOCTL_SPECIFIER) )
+    {
+        ioctl_entry = &ioctl_scratch;
+        ioctl_entry->get_command_value = strtoul(command_name + strlen(WL_FORCE_IOCTL_SPECIFIER), NULL, 0);
+        ioctl_entry->set_command_value = ioctl_entry->get_command_value;
+    }
+    else
+    {
+        /* is ioctl or iovar? */
+        for ( table_index = 0 ; table_index < sizeof( ioctl_map )/sizeof( ioctl_map[0] ) ; table_index++ )
+        {
+            if ( strlen( command_name ) == strlen( ioctl_map[table_index].command_name ) && 0 == strncmp( command_name, ioctl_map[table_index].command_name, strlen( command_name ) ) )
+            {
+                ioctl_entry = &ioctl_map[table_index];
+                break;
+            }
+        }
+    }
+
+    /* SET - send it down to firmware and report based on error code
+       * If ioctl and no get available, or have parameters
+       */
+    if ( ( NULL != ioctl_entry && ioctl_entry->get_command_value == 0 ) || ( cur_arg != argc ) )
+    {
+        /* if a buffer is being used to do set */
+        if ( ( format & WL_FORMAT_BUFFER ) != 0 )
+        {
+            uint32_t hex_buffer_size = MAX( buf_length, strlen( argv[cur_arg] )/2 + 1 );
+            uint8_t *hex_buffer      = malloc( hex_buffer_size );
+
+            if ( hex_buffer == NULL )
+            {
+                printf("Out of heap space: size %lu\n", hex_buffer_size );
+                err = ERR_OUT_OF_HEAP;
+                goto exit;
+            }
+
+            memset( hex_buffer, 0, hex_buffer_size );
+
+            get_length = wiced_ascii_to_hex( argv[cur_arg], hex_buffer, hex_buffer_size );
+
+            if ( get_length != 0 )
+            {
+                /* partially specified data */
+                if ( hex_buffer_size != get_length)
+                {
+                    printf("Warn: unspecified data will be passed as 0 (chars specified=%lu total length=%lu)\n", get_length, hex_buffer_size);
+                }
+
+                if ( NULL == ioctl_entry )
+                {
+                    wwd_result = wwd_wifi_set_iovar_buffer( command_name, hex_buffer, buf_length, interface );
+
+                }
+                else
+                {
+                    wwd_result = wwd_wifi_set_ioctl_buffer( ioctl_entry->set_command_value, hex_buffer, buf_length, interface );
+                }
+
+                if ( WWD_SUCCESS != wwd_result )
+                {
+                    printf("Error %d\n", wwd_result);
+                    err = ERR_UNKNOWN;
+                }
+
+            }
+            else
+            {
+                printf("Error xlating to hex\n");
+                err = ERR_UNKNOWN;
+            }
+
+            free( hex_buffer );
+        }
+        else if ( cur_arg == argc )
+        {
+        /* else if no args to command */
+
+            if ( NULL == ioctl_entry )
+            {
+                /* parameterless set: e.g. up/down */
+                wwd_result = wwd_wifi_set_iovar_void( command_name, interface );
+            }
+            else
+            {
+                wwd_result = wwd_wifi_set_ioctl_void( ioctl_entry->set_command_value, interface );
+            }
+        }
+        else
+        {
+            if ( NULL == ioctl_entry )
+            {
+                wwd_result = wwd_wifi_set_iovar_value( command_name, strtol( argv[argc], &end_ptr, 0 ), interface );
+            }
+            else
+            {
+                wwd_result = wwd_wifi_set_ioctl_value( ioctl_entry->set_command_value, strtol( argv[argc], &end_ptr, 0 ), interface );
+            }
+        }
+
+        if ( wwd_result == WWD_SUCCESS )
+        {
+            goto exit;
+        }
+        else
+        {
+            printf("Error %d\n", wwd_result);
+        }
+    }
+    else
+    {
+        /* GET */
+        if ( ( format & WL_FORMAT_BUFFER ) != 0 )
+        {
+            uint8_t* buffer_input = NULL;
+            wiced_buffer_t buffer;
+            wiced_buffer_t response;
+            uint8_t*      data;
+            uint16_t      byte_counter = 0;
+
+            if ( NULL == ioctl_entry )
+            {
+                buffer_input = (uint8_t*) wwd_sdpcm_get_iovar_buffer( &buffer, buf_length, command_name );
+                CHECK_IOCTL_BUFFER( buffer_input );
+                wwd_result = wwd_sdpcm_send_iovar( SDPCM_GET, buffer, &response, interface );
+            }
+            else
+            {
+                buffer_input = (uint8_t*) wwd_sdpcm_get_ioctl_buffer( &buffer, buf_length );
+                CHECK_IOCTL_BUFFER( buffer_input );
+                wwd_result = wwd_sdpcm_send_ioctl( SDPCM_GET, ioctl_entry->get_command_value, buffer, &response, interface );
+            }
+
+            if ( WWD_SUCCESS != wwd_result )
+            {
+                printf("Error %d from iovar\n", wwd_result);
+                err = ERR_UNKNOWN;
+                /* response is freed already */
+                goto error;
+            }
+            data = (uint8_t*) host_buffer_get_current_piece_data_pointer( response );
+
+            for ( ; buf_length > 0 ; )
+            {
+                if ( buf_length >= 4 )
+                {
+                    printf("%02x %02x %02x %02x: %02d\n", (unsigned int)data[3],
+                        (unsigned int)data[2], (unsigned int)data[1], (unsigned int)data[0], byte_counter);
+
+                    buf_length -= 4;
+                    data += 4;
+                }
+                else
+                {
+                    do
+                    {
+                        printf("%02x ", (unsigned int)data[0]);
+                        data++;
+                        buf_length--;
+                    } while ( buf_length != 0 );
+
+                    printf(": %02d\n", byte_counter);
+                }
+                byte_counter += 4;
+            }
+
+            host_buffer_release( response, WWD_NETWORK_RX );
+        }
+        else if ( ( format & WL_FORMAT_STRING ) == 0 )
+        {
+            /* it's a number */
+            uint32_t cmd_return = 0;
+
+            if ( NULL == ioctl_entry )
+            {
+                /* not expecting a string */
+                wwd_result = wwd_wifi_get_iovar_value( command_name, &cmd_return, interface );
+            }
+            else
+            {
+                wwd_result = wwd_wifi_get_ioctl_value( ioctl_entry->get_command_value, &cmd_return, interface );
+            }
+
+            if ( wwd_result == WWD_SUCCESS )
+            {
+                /* display response buffer based on format specifier */
+                if ( ( format & WL_FORMAT_INT ) != 0 )
+                {
+                    printf("%ld\n", (int32_t)cmd_return);
+                }
+                else if ( ( format & WL_FORMAT_HEX ) != 0 )
+                {
+                    printf("0x%08x\n", (unsigned int)cmd_return);
+                }
+                else
+                {
+                    printf("%lu\n", cmd_return);
+                }
+            }
+            else
+            {
+                printf("Error %d\n", wwd_result);
+                goto error;
+            }
+
+        }
+        else
+        {
+            /* get the string */
+            wiced_buffer_t buffer;
+            wiced_buffer_t response;
+
+            CHECK_IOCTL_BUFFER( wwd_sdpcm_get_iovar_buffer( &buffer, buf_length, command_name ) );
+
+            if ( NULL == ioctl_entry )
+            {
+                wwd_result = wwd_sdpcm_send_iovar( SDPCM_GET, buffer, &response, interface );
+            }
+            else
+            {
+                wwd_result =  wwd_sdpcm_send_ioctl( SDPCM_GET, ioctl_entry->get_command_value, buffer, &response, interface );
+            }
+
+            if ( wwd_result == WWD_SUCCESS )
+            {
+                printf( "%s\n", host_buffer_get_current_piece_data_pointer( response ) );
+                host_buffer_release( response, WWD_NETWORK_RX );
+            }
+            else
+            {
+                printf("Error %d\n", wwd_result);
+            }
+        }
+    }
+
+exit:
+    return err;
+error:
+    printf("wlf [optional format specifiers] <command> <command parameter>\n");
+    printf("\"help\" for more info\n");
+    return ERR_UNKNOWN;
+}
+
 int reset_statistics_counters( int argc, char* argv[] )
 {
     UNUSED_PARAMETER( argc );
@@ -1804,7 +2261,6 @@ int get_phyrate_log( int argc, char* argv[] )
         return ERR_UNKNOWN;
     }
 
-
     data = malloc_named( "phyrate_buffer", sizeof(wiced_phyrate_log_t));
     if (!data)
     {
@@ -1816,19 +2272,18 @@ int get_phyrate_log( int argc, char* argv[] )
     {
         WPRINT_APP_INFO(("Usage: phyrate_dump <bin_size> .lt. %u.\n", WICED_WIFI_PHYRATE_LOG_SIZE));
         WPRINT_APP_INFO(("     : bin_size = %u, bin averaging off.\n", bin_size));
-        bin_size = 0;
+        free(data);
+        return ERR_UNKNOWN;
     }
-    else
-    {
-        WPRINT_APP_INFO(("phyrate_dump: start = %u, stop = %u, bin size = %u.\n", start, stop, bin_size));
 
-        binned_data = malloc_named( "avg_rate_buffer", WICED_WIFI_PHYRATE_LOG_SIZE/bin_size * sizeof(float));
-        if (!binned_data)
-        {
-             WPRINT_APP_INFO(("Unable to allocate binned data buffer!\n"));
-             free(data);
-             return ERR_UNKNOWN;
-        }
+    WPRINT_APP_INFO(("phyrate_dump: start = %u, stop = %u, bin size = %u.\n", start, stop, bin_size));
+
+    binned_data = malloc_named( "avg_rate_buffer", WICED_WIFI_PHYRATE_LOG_SIZE/bin_size * sizeof(float));
+    if (!binned_data)
+    {
+         WPRINT_APP_INFO(("Unable to allocate binned data buffer!\n"));
+         free(data);
+         return ERR_UNKNOWN;
     }
 
     result = wwd_get_phyrate_log(data);
@@ -2679,18 +3134,50 @@ int read_wlan_chip_console_log( int argc, char* argv[] )
     return result;
 }
 
+/*!
+ ******************************************************************************
+ * Print WWD Stats
+ *
+ * @return  0 for success, otherwise error
+ */
+int print_wwd_stats( int argc, char* argv[] )
+{
+    wwd_result_t result;
+    int32_t reset_stats = 0;
+
+    if ( argc > 1 )
+    {
+        reset_stats = atoi( argv[1] );
+    }
+
+    result = wwd_print_stats( reset_stats );
+    if ( result == WWD_DOES_NOT_EXIST )
+    {
+        printf("wwd stats(WWD_ENABLE_STATS) not enabled. \n");
+    }
+
+    if ( result == WWD_SUCCESS )
+    {
+        return ERR_CMD_OK;
+    }
+    else
+    {
+        return ERR_UNKNOWN;
+    }
+}
+
 int peek(int argc, char* argv[])
 {
     unsigned int *addr;
-    unsigned int value;
+    volatile unsigned int value;
 
-    addr = (unsigned int *)((strtol( argv[1], (char **)NULL, 16 )) & 0xFFFFFFFC);
+    addr = (unsigned int *)((strtoul( argv[1], (char **)NULL, 16 )) & 0xFFFFFFFC);
 
     if (addr != NULL)
     {
         wwd_bus_set_backplane_window( (uint32_t) addr );
         memcpy ((void *)&value, (void *)addr, sizeof(value));
-        WPRINT_APP_INFO(("addr 0x%x = 0x%x.\n", (unsigned int)addr, value));
+        WPRINT_APP_INFO(("addr 0x%08x = 0x%08x.\n", (unsigned int)addr, value));
     }
     else
     {
@@ -2705,18 +3192,75 @@ int poke(int argc, char* argv[])
     volatile unsigned int *addr;
     unsigned int value = 0xDEADF00D;
 
-    addr  = (unsigned int *)((strtol( argv[1], (char **)NULL, 16 )) & 0xFFFFFFFC);
-    value = (unsigned int)   (strtol( argv[2], (char **)NULL, 16 ));
+    addr  = (unsigned int *)((strtoul( argv[1], (char **)NULL, 16 )) & 0xFFFFFFFC);
+    value = (unsigned int)   (strtoul( argv[2], (char **)NULL, 16 ));
 
     if (addr != NULL)
     {
         if (value != 0xDEADF00D)
             *addr = value;
-        WPRINT_APP_INFO(("addr 0x%x = 0x%x (wrote 0x%x).\n", (unsigned int)addr, *addr, value));
+
+        WPRINT_APP_INFO(("addr 0x%08x = 0x%08x (wrote 0x%08x).\n", (unsigned int)addr, *addr, value));
+    }
+    else
+    {
+        WPRINT_APP_INFO(("Usage: poke <hex address> <hex value>\n"));
+    }
+
+    return ERR_CMD_OK;
+}
+
+int peek_wifi(int argc, char* argv[])
+{
+    uint32_t addr;
+    volatile uint32_t value;
+    uint32_t iterations = 1;
+    uint32_t loop_count = 0;
+
+    if ( argc == 2 || argc == 3 )
+    {
+        /* number of register to dump */
+        if ( argc == 3 )
+        {
+            iterations = (uint32_t)( strtoul( argv[2], (char **)NULL, 10 ) );
+        }
+
+        addr = (uint32_t)( strtoul( argv[1], (char **)NULL, 16 ) );
+
+        for ( loop_count = 0 ; loop_count < iterations ; loop_count++, addr += 4 )
+        {
+            wwd_bus_read_backplane_value( addr, 4, (uint8_t*)&value );
+            WPRINT_APP_INFO(("addr 0x%08x = 0x%08x.\n", (unsigned int)addr, (unsigned int)value));
+        }
     }
     else
     {
         WPRINT_APP_INFO(("Usage: peek <hex address>\n"));
+    }
+
+    return ERR_CMD_OK;
+}
+
+int poke_wifi(int argc, char* argv[])
+{
+    volatile uint32_t addr;
+    volatile uint32_t value = 0xDEADF00D;
+
+    if ( argc == 3 )
+    {
+        addr  = (uint32_t)   (strtoul( argv[1], (char **)NULL, 16 ));
+        value = (uint32_t)   (strtoul( argv[2], (char **)NULL, 16 ));
+
+        wwd_bus_write_backplane_value( addr, 4, value );
+        WPRINT_APP_INFO(("(writing 0x%08x).\n", (unsigned int)value));
+
+        /* Only one access to volatile variable per statement to ensure proper access order */
+        wwd_bus_read_backplane_value( addr, 4, (uint8_t*)&value );
+        WPRINT_APP_INFO(("addr 0x%08x = 0x%08x\n", (unsigned int)addr, (unsigned int)value));
+    }
+    else
+    {
+        WPRINT_APP_INFO(("Usage: poke <hex address> <hex value>\n"));
     }
 
     return ERR_CMD_OK;
@@ -3686,6 +4230,200 @@ int rrm_nbr_req(int argc, char* argv[])
     return ERR_CMD_OK;
 }
 
+/* parse hex string into buffer */
+static int hex_string_to_uint8(const char *hex_string, uint8_t **output_buffer_return, uint16_t *output_buffer_length_out)
+{
+    const char *iterator         = hex_string;
+    size_t output_buffer_length  = strlen(hex_string)/2 + 1;
+    wiced_bool_t odd_size_buffer = ( output_buffer_length%2 != 0 ) ? WICED_TRUE : WICED_FALSE;
+    uint8_t *output_buffer       = malloc_named( "console", output_buffer_length );
+    int   output_buffer_index    = 0;
+    /* for strtoul */
+    char *end = NULL;
+
+
+    if ( output_buffer == NULL )
+    {
+        *output_buffer_return = NULL;
+        return ERR_OUT_OF_HEAP;
+    }
+
+    memset( output_buffer, 0, output_buffer_length );
+
+    /* skip prefix */
+    if ( *iterator == '0' && *iterator == 'x' )
+    {
+        iterator += 2;
+    }
+
+    if ( *iterator == '\0' )
+    {
+        /* value is 0 */
+        return ERR_CMD_OK;
+    }
+
+    /* handle odd size here, so the loop below is cleaner (don't force user to prepend 0's) */
+    if ( odd_size_buffer == WICED_TRUE )
+    {
+        char short_buffer[2] = { 0 };
+        short_buffer[0] = *iterator;
+        iterator++;
+        output_buffer[output_buffer_index++] = strtoul(short_buffer, &end, 16);
+    }
+
+    while ( *iterator != '\0' )
+    {
+        char buffer[3] = { 0 };
+
+        buffer[0] = *iterator;
+        iterator++;
+        buffer[1] = *iterator;
+        iterator++;
+
+        output_buffer[output_buffer_index++] = strtoul(buffer, &end, 16);
+    }
+
+    *output_buffer_return     = output_buffer;
+    *output_buffer_length_out = output_buffer_index;
+    return ERR_CMD_OK;
+}
+
+int ds1_enter(int argc, char* argv[])
+{
+    wiced_offload_value_t offload;
+    int err                   = ERR_CMD_OK;
+    wiced_result_t result     = WICED_ERROR;
+    const char *sub_cmd_name  = argv[1];
+    uint8_t *buffer           = NULL;
+    uint16_t data_length      = 0;
+    char *end                 = NULL;
+    uint16_t ulp_milliseconds = 0;
+
+    if ( strlen(sub_cmd_name) == strlen("keep_alive") &&
+        strncmp(sub_cmd_name, "keep_alive", strlen(sub_cmd_name) ) == 0 )
+    {
+        /* Example: ds1_enter keep_alive <ulp wait: ex. 8> <period msecs: ex. 20> <packet data: ex. 0x3243567abcdef> */
+        if ( argc != 5 )
+        {
+            return argc < 5 ? ERR_INSUFFICENT_ARGS : ERR_TOO_MANY_ARGS;
+        }
+
+        err = hex_string_to_uint8(argv[4], &buffer, &data_length);
+
+        if (err != ERR_CMD_OK)
+        {
+            return err;
+        }
+
+        ulp_milliseconds                             = strtoul(argv[2], &end, 10);
+
+        offload.keep_alive_packet_info.period_msec   = strtoul(argv[3], &end, 10);
+        offload.keep_alive_packet_info.packet_length = data_length;
+        offload.keep_alive_packet_info.packet        = buffer;
+
+        result = wiced_wifi_enter_ds1( WICED_STA_INTERFACE, WICED_OFFLOAD_KEEP_ALIVE, &offload, ulp_milliseconds);
+        free(buffer);
+    }
+    else if ( strlen(sub_cmd_name) == strlen("arp_hostip") &&
+        strncmp(sub_cmd_name, "arp_hostip", strlen(sub_cmd_name) ) == 0 )
+    {
+        /* Example: ds1_enter arp_hostip <ulp wait: ex. 8> <v4 address: ex. 192.168.1.115> */
+        if ( argc != 4 )
+        {
+            return argc < 4 ? ERR_INSUFFICENT_ARGS : ERR_TOO_MANY_ARGS;
+        }
+
+        ulp_milliseconds    = strtoul(argv[2], &end, 10);
+
+        /* convert ascii to 32bit address */
+        err = str_to_ip( argv[3], &offload.ipv4_address );
+
+        /* only support an IPv4 address for now; if not, return error */
+        if ( err == 0 && offload.ipv4_address.version == WICED_IPV4 )
+        {
+            result = wiced_wifi_enter_ds1( WICED_STA_INTERFACE, WICED_OFFLOAD_ARP_HOSTIP, &offload, ulp_milliseconds);
+        }
+        else
+        {
+            err = ERR_BAD_ARG;
+        }
+    }
+    else if ( strlen(sub_cmd_name) == strlen("pattern") &&
+        strncmp(sub_cmd_name, "pattern", strlen(sub_cmd_name) ) == 0 )
+    {
+        /* Example: ds1_enter pattern <ulp wait: ex. 8> <offset in packet: ex. 20> <mask: ex. 0xffe008> <pattern: ex. 0x34567890> */
+        if ( argc != 6 )
+        {
+            return argc < 6 ? ERR_INSUFFICENT_ARGS : ERR_TOO_MANY_ARGS;
+        }
+
+        /* mask */
+        err = hex_string_to_uint8(argv[4], &buffer, &data_length);
+
+        if (err != ERR_CMD_OK)
+        {
+            printf("err:%d", __LINE__);
+            return err;
+        }
+        offload.pattern.mask_size = data_length;
+        offload.pattern.mask      = buffer;
+
+        /* pattern */
+        err = hex_string_to_uint8(argv[5], &buffer, &data_length);
+
+        if (err != ERR_CMD_OK)
+        {
+            free(offload.pattern.mask);
+            printf("err:%d", __LINE__);
+            return err;
+        }
+        offload.pattern.pattern_size = data_length;
+        offload.pattern.pattern      = buffer;
+
+        /* ulp and offset */
+        ulp_milliseconds             = strtoul(argv[2], &end, 10);
+        offload.pattern.match_offset = strtoul(argv[3], &end, 10);
+
+        result = wiced_wifi_enter_ds1( WICED_STA_INTERFACE, WICED_OFFLOAD_PATTERN, &offload, ulp_milliseconds);
+
+        printf("result enter=%d\n", result);
+
+        free(offload.pattern.mask);
+        free(offload.pattern.pattern);
+    }
+    else
+    {
+        err = ERR_UNKNOWN;
+    }
+
+    /* update err code for return when wiced APIs return an error */
+    if ( result != WICED_SUCCESS && err == ERR_CMD_OK )
+    {
+        if ( result == WICED_OUT_OF_HEAP_SPACE )
+        {
+            err = ERR_OUT_OF_HEAP;
+        }
+        else
+        {
+            err = ERR_UNKNOWN;
+        }
+    }
+
+    return err;
+}
+
+int ds1_exit(int argc, char* argv[])
+{
+    wiced_result_t result = wiced_wifi_exit_ds1( WICED_STA_INTERFACE );
+
+    if ( result != WICED_SUCCESS )
+    {
+       WPRINT_APP_INFO((" %s.. FAILED. error=%d\n", __FUNCTION__, result));
+       return ERR_UNKNOWN;
+    }
+    return ERR_CMD_OK;
+}
+
 /* get fast bss transition over distribution system
  * 1 : FBT(Fast BSS Transition) Over-the-DS(Distribution System) is allowed
  * 0 : FBT (Fast BSS Transition) Over-the-DS not allowed
@@ -3788,5 +4526,3 @@ int mfp_capabilities (int argc, char* argv[] )
 
     return ERR_CMD_OK;
 }
-
-

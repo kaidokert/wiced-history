@@ -1,7 +1,7 @@
 /****************************************************************************
  * include/nuttx/net/ip.h
  *
- * The uIP header file contains IP-related definitions for a number of C
+ * This header file contains IP-related definitions for a number of C
  * macros that are used by applications as well as internally by the
  * OS networking logic.
  *
@@ -53,6 +53,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <queue.h>
+#include <string.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -62,6 +63,12 @@
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
+/* IP Version Mask (bits 0-3 of first byte) */
+
+#define IP_VERSION_MASK  0x70
+#define IPv4_VERSION     0x40
+#define IPv6_VERSION     0x60
+
 /* Values for the IP protocol field */
 
 #define IP_PROTO_ICMP     1
@@ -94,6 +101,7 @@
 
 typedef uint16_t net_ipv6addr_t[8];
 
+#if defined(CONFIG_NET_IPv4) || defined(CONFIG_NET_IPv6)
 /* Describes and address in either the IPv4 or IPv6 domain */
 
 union ip_addr_u
@@ -110,7 +118,9 @@ union ip_addr_u
   net_ipv6addr_t ipv6;
 #endif
 };
+#endif
 
+#if defined(CONFIG_NET_IPv4) || defined(CONFIG_NET_IPv6)
 /* Describes address binding for a PF_INET or PF_INET6 socket */
 
 union ip_binding_u
@@ -139,6 +149,7 @@ union ip_binding_u
   } ipv6;
 #endif /* CONFIG_NET_IPv6 */
 };
+#endif
 
 #ifdef CONFIG_NET_IPv4
 /* The IPv4 header */
@@ -219,17 +230,13 @@ extern "C"
 
 /* Well-known IP addresses */
 
-#ifdef CONFIG_NET_IPv4
-EXTERN const in_addr_t g_ipv4_alloneaddr;       /* An address of all ones */
-EXTERN const in_addr_t g_ipv4_allzeroaddr;      /* An address of all zeroes */
-#endif
-
 #ifdef CONFIG_NET_IPv6
 EXTERN const net_ipv6addr_t g_ipv6_alloneaddr;  /* An address of all ones */
 EXTERN const net_ipv6addr_t g_ipv6_allzeroaddr; /* An address of all zeroes */
 #if defined(CONFIG_NET_ICMPv6_AUTOCONF) || defined(CONFIG_NET_ICMPv6_ROUTER)
 EXTERN const net_ipv6addr_t g_ipv6_allnodes;    /* All link local nodes */
 EXTERN const net_ipv6addr_t g_ipv6_allrouters;  /* All link local routers */
+EXTERN const net_ipv6addr_t g_ipv6_loopback;    /* Loopback address */
 #ifdef CONFIG_NET_ICMPv6_AUTOCONF
 EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link address */
 #endif
@@ -240,17 +247,23 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
  * Public Function Prototypes
  ****************************************************************************/
 
-/* Construct an IPv4 address from four bytes.
+/****************************************************************************
+ * Macro: net_ipaddr
+ *
+ * Description:
+ *   Construct an IPv4 address from four bytes.
  *
  * This function constructs an IPv4 address in network byte order.
  *
+ * Input Parameters:
  *   addr  A pointer to a in_addr_t variable that will be
  *         filled in with the IPv4 address.
  *   addr0 The first octet of the IPv4 address.
  *   addr1 The second octet of the IPv4 address.
  *   addr2 The third octet of the IPv4 address.
  *   addr3 The forth octet of the IPv4 address.
- */
+ *
+ ****************************************************************************/
 
 #define net_ipaddr(addr, addr0, addr1, addr2, addr3) \
   do { \
@@ -258,17 +271,32 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
                  (uint32_t)(addr2) << 8  | (uint32_t)(addr3)); \
   } while (0)
 
-/* Convert an IPv4 address of the form uint16_t[2] to an in_addr_t */
+/****************************************************************************
+ * Macro: net_ip4addr_conv32
+ *
+ * Description:
+ *   Convert an IPv4 address of the form uint16_t[2] to an in_addr_t
+ *
+ ****************************************************************************/
 
 #ifdef CONFIG_ENDIAN_BIG
-#  define net_ip4addr_conv32(addr) (((in_addr_t)((uint16_t*)addr)[0] << 16) | (in_addr_t)((uint16_t*)addr)[1])
+#  define net_ip4addr_conv32(addr) \
+    (((in_addr_t)((uint16_t*)addr)[0] << 16) | \
+     (in_addr_t)((uint16_t*)addr)[1])
 #else
-#  define net_ip4addr_conv32(addr) (((in_addr_t)((uint16_t*)addr)[1] << 16) | (in_addr_t)((uint16_t*)addr)[0])
+#  define net_ip4addr_conv32(addr) \
+    (((in_addr_t)((uint16_t*)addr)[1] << 16) | \
+     (in_addr_t)((uint16_t*)addr)[0])
 #endif
 
-/* Extract individual bytes from a 32-bit IPv4 IP address that is in network
- * byte order.
- */
+/****************************************************************************
+ * Macro: ip4_addr1, ip4_addr2, ip4_addr3, and ip4_addr4
+ *
+ * Description:
+ *   Extract individual bytes from a 32-bit IPv4 IP address that is in
+ *   network byte order.
+ *
+ ****************************************************************************/
 
 #ifdef CONFIG_ENDIAN_BIG
    /* Big-endian byte order: 11223344 */
@@ -286,10 +314,13 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
 #  define ip4_addr4(ipaddr) (((ipaddr) >> 24) & 0xff)
 #endif
 
-/* Construct an IPv6 address from eight 16-bit words.
+/****************************************************************************
+ * Macro: ip6_addr
  *
- * This function constructs an IPv6 address.
- */
+ * Description:
+ *   Construct an IPv6 address from eight 16-bit words.
+ *
+ ****************************************************************************/
 
 #define ip6_addr(addr, addr0,addr1,addr2,addr3,addr4,addr5,addr6,addr7) \
   do { \
@@ -303,7 +334,86 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
     ((uint16_t*)(addr))[7] = HTONS((addr7)); \
   } while (0)
 
-/* Copy an IP address from one place to another.
+/****************************************************************************
+ * Macro: ip6_map_ipv4addr
+ *
+ * Description:
+ *   Hybrid dual-stack IPv6/IPv4 implementations recognize a special class
+ *   of addresses, the IPv4-mapped IPv6 addresses. These addresses consist
+ *   of:
+ *
+ *     1. An 80-bit prefix of zeros,
+ *     2. The next 16 bits are one, and
+ *     3. The remaining, least-significant 32 bits contain the IPv4 address.
+ *
+ *   This macro encodes an IPv4 address in an IPv6 address in this fashion.
+ *
+ * Input Parameters:
+ *   ipv4addr - The IPv4 address to be mapped (scalar)
+ *   ipv6addr - The IPv6 address in which to map the IPv4 address (array)
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+#define ip6_map_ipv4addr(ipv4addr, ipv6addr) \
+  do \
+    { \
+      memset(ipv6addr, 0, 5 * sizeof(uint16_t)); \
+      ipv6addr[5] = 0xffff; \
+      ipv6addr[6] = (uint16_t)((uint32_t)ipv4addr >> 16); \
+      ipv6addr[7] = (uint16_t)ipv4addr & 0xffff; \
+    } \
+  while (0)
+
+/****************************************************************************
+ * Macro: ip6_get_ipv4addr
+ *
+ * Description:
+ *   Decode an IPv4-mapped IPv6 address.
+ *
+ * Input Parameters:
+ *   ipv6addr - The IPv6 address (net_ipv6addr_t array) containing the mapped
+ *     IPv4 address
+ *
+ * Returned Value:
+ *   The decoded IPv4 address (scalar in_addr_t)
+ *
+ ****************************************************************************/
+
+#define ip6_get_ipv4addr(ipv6addr) \
+  (((in_addr_t)(ipv6addr)->s6_addr[12]) | \
+   ((in_addr_t)(ipv6addr)->s6_addr[13] << 8) | \
+   ((in_addr_t)(ipv6addr)->s6_addr[14] << 16) | \
+   ((in_addr_t)(ipv6addr)->s6_addr[15] << 24))
+
+/****************************************************************************
+ * Macro: ip6_is_ipv4addr
+ *
+ * Description:
+ *   Test if an IPv6 is an IPv4-mapped IPv6 address.
+ *
+ * Input Parameters:
+ *   ipv6addr - The IPv6 address to be tested
+ *
+ * Returned Value:
+ *   True is returned if ipv6addr holds a mapped IPv4 address.
+ *
+ ****************************************************************************/
+
+#define ip6_is_ipv4addr(ipv6addr) \
+  ((ipv6addr)->s6_addr32[0] == 0 && \
+   (ipv6addr)->s6_addr32[1] == 0 && \
+   (ipv6addr)->s6_addr16[4] == 0 && \
+   (ipv6addr)->s6_addr16[5] == 0xffff)
+
+/****************************************************************************
+ * Macro: net_ipv4addr_copy, net_ipv4addr_hdrcopy, net_ipv6addr_copy, and
+ *        net_ipv6addr_hdrcopy
+ *
+ * Description:
+ *   Copy an IP address from one place to another.
  *
  * Example:
  *
@@ -312,9 +422,11 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
  *   net_ipaddr(&ipaddr1, 192,16,1,2);
  *   net_ipaddr_copy(&ipaddr2, &ipaddr1);
  *
- * dest The destination for the copy.
- * src The source from where to copy.
- */
+ * Input Parameters:
+ *   dest - The destination for the copy.
+ *   src  - The source from where to copy.
+ *
+ ****************************************************************************/
 
 #ifdef CONFIG_NET_IPv4
 #  define net_ipv4addr_copy(dest, src) \
@@ -335,7 +447,12 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
    net_ipv6addr_copy(dest, src)
 #endif
 
-/* Compare two IP addresses
+/****************************************************************************
+ * Macro: net_ipv4addr_cmp, net_ipv4addr_hdrcmp, net_ipv6addr_cmp, and
+ *        net_ipv6addr_hdrcmp
+ *
+ * Description:
+ *   Compare two IP addresses
  *
  * Example:
  *
@@ -347,9 +464,11 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
  *       printf("They are the same");
  *     }
  *
- * addr1 The first IP address.
- * addr2 The second IP address.
- */
+ * Input Parameters:
+ *   addr1 - The first IP address.
+ *   addr2 - The second IP address.
+ *
+ ****************************************************************************/
 
 #ifdef CONFIG_NET_IPv4
 #  define net_ipv4addr_cmp(addr1, addr2) \
@@ -387,7 +506,7 @@ EXTERN const net_ipv6addr_t g_ipv6_llnetmask;   /* Netmask for local link addres
  *       printf("They are the same");
  *     }
  *
- * Parameters:
+ * Input Parameters:
  *   addr1 - The first IP address.
  *   addr2 - The second IP address.
  *   mask  - The netmask.
@@ -427,7 +546,7 @@ bool net_ipv6addr_maskcmp(const net_ipv6addr_t addr1,
  *   In the example above, the variable "ipaddr2" will contain the IP
  *   address 192.168.1.0.
  *
- * Parameters:
+ * Input Parameters:
  *   dest Where the result is to be placed.
  *   src The IP address.
  *   mask The netmask.

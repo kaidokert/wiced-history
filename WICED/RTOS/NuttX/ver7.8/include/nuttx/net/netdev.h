@@ -1,8 +1,9 @@
 /****************************************************************************
  * include/nuttx/net/netdev.h
- * Defines architecture-specific device driver interfaces to the uIP network.
+ * Defines architecture-specific device driver interfaces to the NuttX
+ * network.
  *
- *   Copyright (C) 2007, 2009, 2011-2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007, 2009, 2011-2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Derived largely from portions of uIP with has a similar BSD-styple license:
@@ -61,19 +62,119 @@
 
 #include <nuttx/net/netconfig.h>
 #include <nuttx/net/ip.h>
+#include <nuttx/clock.h>
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
+/* Helper macros for network device statistics */
+
+#ifdef CONFIG_NETDEV_STATISTICS
+#  define NETDEV_RESET_STATISTICS(dev) \
+     memset(&(dev)->d_statistics, 0, sizeof(struct netdev_statistics_s))
+
+#  define _NETDEV_STATISTIC(dev,name) ((dev)->d_statistics.name++)
+#  define _NETDEV_ERROR(dev,name) \
+     do \
+       { \
+         (dev)->d_statistics.name++; \
+         (dev)->d_statistics.errors++; \
+       } \
+     while (0)
+
+#  define NETDEV_RXPACKETS(dev)   _NETDEV_STATISTIC(dev,rx_packets)
+#  define NETDEV_RXFRAGMENTS(dev) _NETDEV_STATISTIC(dev,rx_fragments)
+#  define NETDEV_RXERRORS(dev)    _NETDEV_ERROR(dev,rx_errors)
+#  ifdef CONFIG_NET_IPv4
+#    define NETDEV_RXIPV4(dev)    _NETDEV_STATISTIC(dev,rx_ipv4)
+#  else
+#    define NETDEV_RXIPV4(dev)
+#  endif
+#  ifdef CONFIG_NET_IPv6
+#    define NETDEV_RXIPV6(dev)    _NETDEV_STATISTIC(dev,rx_ipv6)
+#  else
+#    define NETDEV_RXIPV6(dev)
+#  endif
+#  ifdef CONFIG_NET_ARP
+#    define NETDEV_RXARP(dev)     _NETDEV_STATISTIC(dev,rx_arp)
+#  else
+#    define NETDEV_RXARP(dev)
+#  endif
+#  define NETDEV_RXDROPPED(dev)   _NETDEV_STATISTIC(dev,rx_dropped)
+
+#  define NETDEV_TXPACKETS(dev)   _NETDEV_STATISTIC(dev,tx_packets)
+#  define NETDEV_TXDONE(dev)      _NETDEV_STATISTIC(dev,tx_done)
+#  define NETDEV_TXERRORS(dev)    _NETDEV_ERROR(dev,tx_errors)
+#  define NETDEV_TXTIMEOUTS(dev)  _NETDEV_ERROR(dev,tx_timeouts)
+
+#  define NETDEV_ERRORS(dev)      _NETDEV_STATISTIC(dev,errors)
+
+#else
+#  define NETDEV_RESET_STATISTICS(dev)
+#  define NETDEV_RXPACKETS(dev)
+#  define NETDEV_RXFRAGMENTS(dev)
+#  define NETDEV_RXERRORS(dev)
+#  define NETDEV_RXIPV4(dev)
+#  define NETDEV_RXIPV6(dev)
+#  define NETDEV_RXARP(dev)
+#  define NETDEV_RXDROPPED(dev)
+
+#  define NETDEV_TXPACKETS(dev)
+#  define NETDEV_TXDONE(dev)
+#  define NETDEV_TXERRORS(dev)
+#  define NETDEV_TXTIMEOUTS(dev)
+
+#  define NETDEV_ERRORS(dev)
+#endif
+
 /****************************************************************************
  * Public Types
  ****************************************************************************/
+
+#ifdef CONFIG_NETDEV_STATISTICS
+/* If CONFIG_NETDEV_STATISTICS is enabled and if the driver supports
+ * statistics, then this structure holds the counts of network driver
+ * events.
+ */
+
+struct netdev_statistics_s
+{
+  /* Rx Status */
+
+  uint32_t rx_packets;     /* Number of packets received */
+  uint32_t rx_fragments;   /* Number of fragments received */
+  uint32_t rx_errors;      /* Number of receive errors */
+#ifdef CONFIG_NET_IPv4
+  uint32_t rx_ipv4;        /* Number of Rx IPv4 packets received */
+#endif
+#ifdef CONFIG_NET_IPv6
+  uint32_t rx_ipv6;        /* Number of Rx IPv6 packets received */
+#endif
+#ifdef CONFIG_NET_ARP
+  uint32_t rx_arp;         /* Number of Rx ARP packets received */
+#endif
+  uint32_t rx_dropped;     /* Unsupported Rx packets received */
+
+  /* Tx Status */
+
+  uint32_t tx_packets;     /* Number of Tx packets queued */
+  uint32_t tx_done;        /* Number of packets completed */
+  uint32_t tx_errors;      /* Number of receive errors (incl timeouts) */
+  uint32_t tx_timeouts;    /* Number of Tx timeout errors */
+
+  /* Other status */
+
+  uint32_t errors;         /* Total umber of errors */
+};
+#endif
 
 /* This structure collects information that is specific to a specific network
  * interface driver.  If the hardware platform supports only a single instance
  * of this structure.
  */
+
+struct devif_callback_s; /* Forward reference */
 
 struct net_driver_s
 {
@@ -94,8 +195,8 @@ struct net_driver_s
 
   /* Drivers interface flags.  See IFF_* definitions in include/net/if.h */
 
-  uint8_t d_flags;
-
+  uint16_t d_flags;
+  int d_ifindex;                  /* interface index */
 #ifdef CONFIG_NET_MULTILINK
   /* Multi network devices using multiple data links protocols are selected */
 
@@ -133,9 +234,9 @@ struct net_driver_s
    * headers from this buffer. The size of the link level headers is
    * configured by the NET_LL_HDRLEN(dev) define.
    *
-   * uIP will handle only a single buffer for both incoming and outgoing
-   * packets.  However, the drive design may be concurrently send and
-   * filling separate, break-off buffers if CONFIG_NET_MULTIBUFFER is
+   * The network will handle only a single buffer for both incoming and
+   * outgoing packets.  However, the driver design may be concurrently send
+   * and filling separate, break-off buffers if CONFIG_NET_MULTIBUFFER is
    * defined.  That buffer management must be controlled by the driver.
    */
 
@@ -167,7 +268,7 @@ struct net_driver_s
  *
  * Holds the length of the packet in the d_buf buffer.
  *
- * When the network device driver calls the uIP input function,
+ * When the network device driver calls the network input function,
  * d_len should be set to the length of the packet in the d_buf
  * buffer.
  *
@@ -184,11 +285,46 @@ struct net_driver_s
 
   uint16_t d_sndlen;
 
+  /* Time of last device poll */
+  systime_t d_polltime;
+
 #ifdef CONFIG_NET_IGMP
   /* IGMP group list */
 
   sq_queue_t grplist;
 #endif
+
+#ifdef CONFIG_NETDEV_STATISTICS
+  /* If CONFIG_NETDEV_STATISTICS is enabled and if the driver supports
+   * statistics, then this structure holds the counts of network driver
+   * events.
+   */
+
+  struct netdev_statistics_s d_statistics;
+#endif
+
+  /* Application callbacks:
+   *
+   * Network device event handlers are retained in a 'list' and are called
+   * for events specified in the flags set within struct devif_callback_s.
+   *
+   * There are two lists associated with each device:
+   *
+   *   1) d_pktcb - For connection/port oriented events for certain
+   *      socket-less packet transfers.  There events include:
+   *
+   *        ICMP data receipt: ICMP_NEWDATA, ICMPv6_NEWDATA
+   *        ICMP ECHO replies: ICMP_ECHOREPLY, ICMPv6_ECHOREPLY
+   *        Driver Tx poll events: ARP_POLL, ICMP_POLL. ICMPv6_POLL
+   *
+   *   2) d_devcb - For non-data, device related events that apply to all
+   *      transfers or connections involving this device:
+   *
+   *        NETDEV_DOWN - The network is down
+   */
+
+  FAR struct devif_callback_s *d_conncb;
+  FAR struct devif_callback_s *d_devcb;
 
   /* Driver callbacks */
 
@@ -214,7 +350,7 @@ struct net_driver_s
 typedef int (*devif_poll_callback_t)(FAR struct net_driver_s *dev);
 
 /****************************************************************************
- * Public Variables
+ * Public Data
  ****************************************************************************/
 
 /****************************************************************************
@@ -222,10 +358,10 @@ typedef int (*devif_poll_callback_t)(FAR struct net_driver_s *dev);
  ****************************************************************************/
 
 /****************************************************************************
- * uIP device driver functions
+ * Network device driver functions
  *
  * These functions are used by a network device driver for interacting
- * with uIP.
+ * with the NuttX network.
  *
  * Process an incoming IP packet.
  *
@@ -252,9 +388,9 @@ typedef int (*devif_poll_callback_t)(FAR struct net_driver_s *dev);
  *           }
  *       }
  *
- * Note: If you are writing a uIP device driver that needs ARP
- * (Address Resolution Protocol), e.g., when running uIP over
- * Ethernet, you will need to call the uIP ARP code before calling
+ * Note: If you are writing a network device driver that needs ARP
+ * (Address Resolution Protocol), e.g., when running the network over
+ * Ethernet, you will need to call the network ARP code before calling
  * this function:
  *
  *     #define BUF ((struct eth_hdr_s *)&dev->d_buf[0])
@@ -293,8 +429,8 @@ int ipv6_input(FAR struct net_driver_s *dev);
 /****************************************************************************
  * Polling of connections
  *
- * These functions will traverse each active uIP connection structure and
- * perform appropriate operations:  devif_timer() will perform TCP timer
+ * These functions will traverse each active network connection structure
+ * and perform appropriate operations:  devif_timer() will perform TCP timer
  * operations (and UDP polling operations); devif_poll() will perform TCP
  * and UDP polling operations. The CAN driver MUST implement logic to
  * periodically call devif_timer(); devif_poll() may be called asynchronously
@@ -306,7 +442,7 @@ int ipv6_input(FAR struct net_driver_s *dev);
  * value (which it should do only if it cannot accept further write data).
  *
  * When the callback function is called, there may be an outbound packet
- * waiting for service in the uIP packet buffer, and if so the d_len field
+ * waiting for service in the device packet buffer, and if so the d_len field
  * is set to a value larger than zero. The device driver should then send
  * out the packet.
  *
@@ -324,9 +460,9 @@ int ipv6_input(FAR struct net_driver_s *dev);
  *   ...
  *   devif_poll(dev, driver_callback);
  *
- * Note: If you are writing a uIP device driver that needs ARP (Address
- * Resolution Protocol), e.g., when running uIP over Ethernet, you will
- * need to call the arp_out() function in the callback function
+ * Note: If you are writing a network device driver that needs ARP (Address
+ * Resolution Protocol), e.g., when running the networ over Ethernet, you
+ * will need to call the arp_out() function in the callback function
  * before sending the packet:
  *
  *   int driver_callback(FAR struct net_driver_s *dev)
@@ -344,8 +480,7 @@ int ipv6_input(FAR struct net_driver_s *dev);
  ****************************************************************************/
 
 int devif_poll(FAR struct net_driver_s *dev, devif_poll_callback_t callback);
-int devif_timer(FAR struct net_driver_s *dev, devif_poll_callback_t callback,
-                int hsec);
+int devif_timer(FAR struct net_driver_s *dev, devif_poll_callback_t callback);
 
 /****************************************************************************
  * Name: neighbor_out
@@ -481,4 +616,47 @@ uint16_t ipv4_chksum(FAR struct net_driver_s *dev);
 #ifdef CONFIG_NET_IPv6
 uint16_t ipv6_chksum(FAR struct net_driver_s *dev);
 #endif
+
+/****************************************************************************
+ * Function: netdev_ipv4_hdrlen
+ *
+ * Description:
+ *    Provide header length for interface based on device
+ *
+ * Input Parameters:
+ *   dev Device structure pointer
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_IPv4
+#if defined(CONFIG_NET_MULTILINK)
+#  define netdev_ipv4_hdrlen(dev) (dev->d_llhdrlen)
+#elif defined(CONFIG_NET_ETHERNET)
+#  define netdev_ipv4_hdrlen(dev) ETH_HDRLEN
+#else /* if defined(CONFIG_NET_SLIP) */
+#  define netdev_ipv4_hdrlen(dev) 0
+#endif
+#endif /* CONFIG_NET_IPv4 */
+
+/****************************************************************************
+ * Function: netdev_ipv6_hdrlen
+ *
+ * Description:
+ *    Provide header length for interface based on device
+ *
+ * Input Parameters:
+ *   dev Device structure pointer
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_IPv6
+#if defined(CONFIG_NET_MULTILINK)
+#  define netdev_ipv6_hdrlen(dev) dev->d_llhdrlen
+#elif defined(CONFIG_NET_ETHERNET)
+#  define netdev_ipv6_hdrlen(dev) ETH_HDRLEN
+#else /* if defined(CONFIG_NET_SLIP) */
+#  define netdev_ipv6_hdrlen(dev) 0
+#endif
+#endif /* CONFIG_NET_IPv6 */
+
 #endif /* __INCLUDE_NUTTX_NET_NETDEV_H */

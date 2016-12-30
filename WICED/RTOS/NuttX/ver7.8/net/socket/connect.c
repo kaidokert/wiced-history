@@ -69,6 +69,7 @@ struct tcp_connect_s
 {
   FAR struct tcp_conn_s  *tc_conn;    /* Reference to TCP connection structure */
   FAR struct devif_callback_s *tc_cb; /* Reference to callback instance */
+  FAR struct socket *tc_psock;        /* The socket being connected */
   sem_t                   tc_sem;     /* Semaphore signals recv completion */
   int                     tc_result;  /* OK on success, otherwise a negated errno. */
 };
@@ -81,11 +82,11 @@ struct tcp_connect_s
 #ifdef CONFIG_NET_TCP
 static inline int psock_setup_callbacks(FAR struct socket *psock,
                                         FAR struct tcp_connect_s *pstate);
-static inline void psock_teardown_callbacks(FAR struct tcp_connect_s *pstate,
+static void psock_teardown_callbacks(FAR struct tcp_connect_s *pstate,
                                           int status);
-static uint16_t psock_connect_interrupt(FAR struct net_driver_s *dev,
+static uint32_t psock_connect_interrupt(FAR struct net_driver_s *dev,
                                         FAR void *pvconn, FAR void *pvpriv,
-                                        uint16_t flags);
+                                        uint32_t flags);
 static inline int psock_tcp_connect(FAR struct socket *psock,
                                     FAR const struct sockaddr *addr);
 #endif /* CONFIG_NET_TCP */
@@ -108,6 +109,7 @@ static inline int psock_setup_callbacks(FAR struct socket *psock,
 
   (void)sem_init(&pstate->tc_sem, 0, 0); /* Doesn't really fail */
   pstate->tc_conn   = conn;
+  pstate->tc_psock  = psock;
   pstate->tc_result = -EAGAIN;
 
   /* Set up the callbacks in the connection */
@@ -118,15 +120,12 @@ static inline int psock_setup_callbacks(FAR struct socket *psock,
       /* Set up the connection "interrupt" handler */
 
       pstate->tc_cb->flags   = (TCP_NEWDATA | TCP_CLOSE | TCP_ABORT |
-                                TCP_TIMEDOUT | TCP_CONNECTED);
-      pstate->tc_cb->priv    = (void*)pstate;
+                                TCP_TIMEDOUT | TCP_CONNECTED | NETDEV_DOWN);
+      pstate->tc_cb->priv    = (FAR void *)pstate;
       pstate->tc_cb->event   = psock_connect_interrupt;
-
-      /* Set up the connection event monitor */
-
-      net_startmonitor(psock);
       ret = OK;
     }
+
   return ret;
 }
 #endif /* CONFIG_NET_TCP */
@@ -136,7 +135,7 @@ static inline int psock_setup_callbacks(FAR struct socket *psock,
  ****************************************************************************/
 
 #ifdef CONFIG_NET_TCP
-static inline void psock_teardown_callbacks(FAR struct tcp_connect_s *pstate,
+static void psock_teardown_callbacks(FAR struct tcp_connect_s *pstate,
                                             int status)
 {
   FAR struct tcp_conn_s *conn = pstate->tc_conn;
@@ -144,7 +143,6 @@ static inline void psock_teardown_callbacks(FAR struct tcp_connect_s *pstate,
   /* Make sure that no further interrupts are processed */
 
   tcp_callback_free(conn, pstate->tc_cb);
-
   pstate->tc_cb = NULL;
 
   /* If we successfully connected, we will continue to monitor the connection
@@ -181,9 +179,9 @@ static inline void psock_teardown_callbacks(FAR struct tcp_connect_s *pstate,
  ****************************************************************************/
 
 #ifdef CONFIG_NET_TCP
-static uint16_t psock_connect_interrupt(FAR struct net_driver_s *dev,
+static uint32_t psock_connect_interrupt(FAR struct net_driver_s *dev,
                                         FAR void *pvconn, FAR void *pvpriv,
-                                        uint16_t flags)
+                                        uint32_t flags)
 {
   struct tcp_connect_s *pstate = (struct tcp_connect_s *)pvpriv;
 
@@ -219,15 +217,35 @@ static uint16_t psock_connect_interrupt(FAR struct net_driver_s *dev,
 
       else if ((flags & TCP_TIMEDOUT) != 0)
         {
-          /* Indicate that the remote host is unreachable (or should this be timedout?) */
+          /* Indicate that the connection timedout?) */
 
           pstate->tc_result = -ETIMEDOUT;
+        }
+
+      else if ((flags & NETDEV_DOWN) != 0)
+        {
+          /* The network device went down.  Indicate that the remote host
+           * is unreachable.
+           */
+
+          pstate->tc_result = -ENETUNREACH;
         }
 
       /* TCP_CONNECTED: The socket is successfully connected */
 
       else if ((flags & TCP_CONNECTED) != 0)
         {
+          FAR struct socket *psock = pstate->tc_psock;
+          DEBUGASSERT(psock);
+
+          /* Mark the connection bound and connected.  NOTE this is
+           * is done here (vs. later) in order to avoid any race condition
+           * in the socket state.  It is known to connected here and now,
+           * but not necessarily at any time later.
+           */
+
+          psock->s_flags |= (_SF_BOUND | _SF_CONNECTED);
+
           /* Indicate that the socket is no longer connected */
 
           pstate->tc_result = OK;
@@ -243,7 +261,7 @@ static uint16_t psock_connect_interrupt(FAR struct net_driver_s *dev,
           return flags & ~TCP_NEWDATA;
         }
 
-      nllvdbg("Resuming: %d\n", pstate->tc_result);
+      nllvdbg("Resuming: %d mss=%u\n", pstate->tc_result, pstate->tc_conn->mss);
 
       /* Stop further callbacks */
 
@@ -258,24 +276,16 @@ static uint16_t psock_connect_interrupt(FAR struct net_driver_s *dev,
 
       DEBUGASSERT(pstate->tc_conn);
 
-#ifdef CONFIG_NET_IPv4
-#ifdef CONFIG_NET_IPv6
-  if (pstate->tc_conn->domain == PF_INET)
-#endif
-    {
-      pstate->tc_conn->mss = TCP_IPv4_INITIAL_MSS(dev);
-    }
-#endif /* CONFIG_NET_IPv4 */
+#ifdef CONFIG_NETDEV_MULTINIC
+      /* We now have to filter all outgoing transfers so that they use only
+       * the MSS of this device.
+       */
 
-#ifdef CONFIG_NET_IPv6
-#ifdef CONFIG_NET_IPv4
-  else
-#endif
-    {
-      pstate->tc_conn->mss = TCP_IPv4_INITIAL_MSS(dev);
-    }
-#endif /* CONFIG_NET_IPv6 */
+      DEBUGASSERT(pstate->tc_conn->dev == NULL ||
+                  pstate->tc_conn->dev == dev);
+      pstate->tc_conn->dev = dev;
 
+#endif /* CONFIG_NETDEV_MULTINIC */
 #endif /* CONFIG_NET_MULTILINK */
 
       /* Wake up the waiting thread */
@@ -357,7 +367,7 @@ static inline int psock_tcp_connect(FAR struct socket *psock,
 
           if (ret < 0)
             {
-              ret = -errno;
+              ret = -get_errno();
             }
           else
             {
@@ -373,11 +383,25 @@ static inline int psock_tcp_connect(FAR struct socket *psock,
           psock_teardown_callbacks(&state, ret);
         }
 
-      /* Mark the connection bound and connected */
+      /* Check if the socket was successfully connected. */
 
       if (ret >= 0)
         {
-          psock->s_flags |= (_SF_BOUND|_SF_CONNECTED);
+          /* Yes... Now that we are connected, we need to set up to monitor
+           * the state of the connection up the connection event monitor.
+           */
+
+          ret = net_startmonitor(psock);
+          if (ret < 0)
+            {
+              /* net_startmonitor() can only fail on certain race
+               * conditions where the connection was lost just before
+               * this function was called.  That is not expected to
+               * happen in this context, but just in case...
+               */
+
+              net_lostconnection(psock, TCP_ABORT);
+            }
         }
     }
 
@@ -588,7 +612,15 @@ int psock_connect(FAR struct socket *psock, FAR const struct sockaddr *addr,
           else
 #endif
             {
-              ret = udp_connect(psock->s_conn, addr);
+              ret = udp_connect(psock->s_conn, addr, 0);
+              if (ret < 0 || addr == NULL)
+                {
+                  psock->s_flags &= ~_SF_CONNECTED;
+                }
+              else
+                {
+                  psock->s_flags |= _SF_CONNECTED;
+                }
             }
 #endif /* CONFIG_NET_UDP */
 
@@ -609,7 +641,7 @@ int psock_connect(FAR struct socket *psock, FAR const struct sockaddr *addr,
   return OK;
 
 errout:
-   errno = err;
+  set_errno(err);
   return ERROR;
 }
 

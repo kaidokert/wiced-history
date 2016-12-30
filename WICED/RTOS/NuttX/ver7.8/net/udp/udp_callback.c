@@ -64,10 +64,6 @@
 #define UDPIPv6BUF ((FAR struct udp_hdr_s *)&dev->d_buf[NET_LL_HDRLEN(dev) + IPv6_HDRLEN])
 
 /****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
  * Private Functions
  ****************************************************************************/
 
@@ -81,8 +77,8 @@
  ****************************************************************************/
 
 #ifdef CONFIG_NET_UDP_READAHEAD
-static uint16_t udp_datahandler(FAR struct net_driver_s *dev, FAR struct udp_conn_s *conn,
-                                FAR uint8_t *buffer, uint16_t buflen)
+static uint32_t udp_datahandler(FAR struct net_driver_s *dev, FAR struct udp_conn_s *conn,
+                                FAR uint8_t *buffer, uint32_t buflen)
 {
   FAR struct iob_s *iob;
   int ret;
@@ -214,24 +210,28 @@ static uint16_t udp_datahandler(FAR struct net_driver_s *dev, FAR struct udp_con
     }
 #endif /* CONFIG_NET_UDP_RECVMSG */
 
-  /* Copy the new appdata into the I/O buffer chain */
+  if (buflen > 0)
+    {
+      /* Copy the new appdata into the I/O buffer chain */
 #ifdef CONFIG_NET_UDP_RECVMSG
-  ret = iob_trycopyin(iob, buffer, buflen, 2 * src_addr_size + sizeof(uint8_t),
-                      true);
+      ret = iob_trycopyin(iob, buffer, buflen, 2 * src_addr_size + sizeof(uint8_t),
+                          true);
 #else
-  ret = iob_trycopyin(iob, buffer, buflen, src_addr_size + sizeof(uint8_t),
-                      true);
+      ret = iob_trycopyin(iob, buffer, buflen, src_addr_size + sizeof(uint8_t),
+                          true);
 #endif /* CONFIG_NET_UDP_RECVMSG */
 
-  if (ret < 0)
-    {
-      /* On a failure, iob_trycopyin return a negated error value but does
-       * not free any I/O buffers.
-       */
+      if (ret < 0)
+        {
+          /* On a failure, iob_trycopyin return a negated error value but
+           * does not free any I/O buffers.
+           */
 
-      nlldbg("ERROR: Failed to add data to the I/O buffer chain: %d\n", ret);
-      (void)iob_free_chain(iob);
-      return 0;
+          nlldbg("ERROR: Failed to add data to the I/O buffer chain: %d\n",
+                 ret);
+          (void)iob_free_chain(iob);
+          return 0;
+        }
     }
 
   /* Add the new I/O buffer chain to the tail of the read-ahead queue */
@@ -257,11 +257,16 @@ static uint16_t udp_datahandler(FAR struct net_driver_s *dev, FAR struct udp_con
  *
  ****************************************************************************/
 
-static inline uint16_t
+static inline uint32_t
 net_dataevent(FAR struct net_driver_s *dev, FAR struct udp_conn_s *conn,
-              uint16_t flags)
+              uint32_t flags)
 {
-  uint16_t ret;
+  uint32_t ret;
+#ifdef CONFIG_NET_UDP_READAHEAD
+  uint8_t *buffer = dev->d_appdata;
+  int      buflen = dev->d_len;
+  uint16_t recvlen;
+#endif
 
   ret = (flags & ~UDP_NEWDATA);
 
@@ -269,35 +274,26 @@ net_dataevent(FAR struct net_driver_s *dev, FAR struct udp_conn_s *conn,
    * can have zero-length with UDP_NEWDATA set just to cause an ACK).
    */
 
-  if (dev->d_len > 0)
-    {
+   nllvdbg("No receive on connection\n");
+
 #ifdef CONFIG_NET_UDP_READAHEAD
-      uint8_t *buffer = dev->d_appdata;
-      int      buflen = dev->d_len;
-      uint16_t recvlen;
+  /* Save as the packet data as in the read-ahead buffer.  NOTE that
+   * partial packets will not be buffered.
+   */
+
+  recvlen = udp_datahandler(dev, conn, buffer, buflen);
+  if (recvlen < buflen)
 #endif
-
-      nllvdbg("No receive on connection\n");
-
-#ifdef CONFIG_NET_UDP_READAHEAD
-      /* Save as the packet data as in the read-ahead buffer.  NOTE that
-       * partial packets will not be buffered.
+    {
+      /* There is no handler to receive new data and there are no free
+       * read-ahead buffers to retain the data -- drop the packet.
        */
 
-      recvlen = udp_datahandler(dev, conn, buffer, buflen);
-      if (recvlen < buflen)
-#endif
-        {
-          /* There is no handler to receive new data and there are no free
-           * read-ahead buffers to retain the data -- drop the packet.
-           */
+     nllvdbg("Dropped %d bytes\n", dev->d_len);
 
-         nllvdbg("Dropped %d bytes\n", dev->d_len);
-
- #ifdef CONFIG_NET_STATISTICS
-          g_netstats.udp.drop++;
+#ifdef CONFIG_NET_STATISTICS
+     g_netstats.udp.drop++;
 #endif
-        }
     }
 
   /* In any event, the new data has now been handled */
@@ -324,10 +320,10 @@ net_dataevent(FAR struct net_driver_s *dev, FAR struct udp_conn_s *conn,
  *
  ****************************************************************************/
 
-uint16_t udp_callback(FAR struct net_driver_s *dev,
-                      FAR struct udp_conn_s *conn, uint16_t flags)
+uint32_t udp_callback(FAR struct net_driver_s *dev,
+                      FAR struct udp_conn_s *conn, uint32_t flags)
 {
-  nllvdbg("flags: %04x\n", flags);
+  nllvdbg("flags: %08x\n", flags);
 
   /* Some sanity checking */
 
@@ -335,7 +331,7 @@ uint16_t udp_callback(FAR struct net_driver_s *dev,
     {
       /* Perform the callback */
 
-      flags = devif_callback_execute(dev, conn, flags, conn->list);
+      flags = devif_conn_event(dev, conn, flags, conn->list);
 
       if ((flags & UDP_NEWDATA) != 0)
         {

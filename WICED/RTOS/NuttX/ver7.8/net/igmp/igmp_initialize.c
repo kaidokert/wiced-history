@@ -58,7 +58,6 @@
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
-
 #ifndef CONFIG_NET_IPv4
 #ifdef CONFIG_NET_IPv6
 #  error "IGMP for IPv6 not supported"

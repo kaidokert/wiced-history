@@ -39,6 +39,10 @@ ifeq ($(CONFIG_NET),y)
 
 # Include network interface drivers
 
+ifeq ($(CONFIG_NETDEV_LOOPBACK),y)
+  CSRCS += loopback.c
+endif
+
 ifeq ($(CONFIG_NET_DM90x0),y)
   CSRCS += dm90x0.c
 endif

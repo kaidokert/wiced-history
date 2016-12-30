@@ -55,10 +55,6 @@
 #include "tcp/tcp.h"
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
  * Private Types
  ****************************************************************************/
 
@@ -71,10 +67,6 @@ struct accept_s
   FAR struct tcp_conn_s *acpt_newconn;    /* The accepted connection */
   int                    acpt_result;     /* The result of the wait */
 };
-
-/****************************************************************************
- * Private Data
- ****************************************************************************/
 
 /****************************************************************************
  * Private Functions
@@ -219,7 +211,8 @@ static int accept_interrupt(FAR struct tcp_conn_s *listener,
  * Parameters:
  *   psock    The listening TCP socket structure
  *   addr     Receives the address of the connecting client
- *   addrlen  Input: allocated size of 'addr', Return: returned size of 'addr'
+ *   addrlen  Input: allocated size of 'addr', Return: returned size of
+ *            'addr'
  *   newconn  The new, accepted TCP connection structure
  *
  * Returned Value:
@@ -237,7 +230,6 @@ int psock_tcp_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
 {
   FAR struct tcp_conn_s *conn;
   struct accept_s state;
-  int err = OK;
   int ret;
 
   DEBUGASSERT(psock && newconn);
@@ -258,16 +250,15 @@ int psock_tcp_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
       accept_tcpsender(psock, state.acpt_newconn, addr, addrlen);
     }
 
-  /* In general, this uIP-based implementation will not support non-blocking
-   * socket operations... except in a few cases:  Here for TCP accept with backlog
-   * enabled.  If this socket is configured as non-blocking then return EAGAIN
-   * if there is no pending connection in the backlog.
+  /* In general, this implementation will not support non-blocking socket
+   * operations... except in a few cases:  Here for TCP accept with
+   * backlog enabled.  If this socket is configured as non-blocking then
+   * return EAGAIN if there is no pending connection in the backlog.
    */
 
   else if (_SS_ISNONBLOCK(psock->s_flags))
     {
-      err = EAGAIN;
-      goto errout;
+      return -EAGAIN;
     }
   else
 #endif
@@ -292,7 +283,7 @@ int psock_tcp_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
 
       /* Set up the callback in the connection */
 
-      conn->accept_private  = (void*)&state;
+      conn->accept_private  = (FAR void *)&state;
       conn->accept          = accept_interrupt;
 
       /* Wait for the send to complete or an error to occur:  NOTES: (1)
@@ -313,7 +304,8 @@ int psock_tcp_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
            * altered by intervening operations.
            */
 
-          err = get_errno();
+          ret = -get_errno();
+          DEBUGASSERT(ret < 0);
         }
 
       /* Make sure that no further interrupts are processed */
@@ -333,27 +325,23 @@ int psock_tcp_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
 
       if (state.acpt_result != 0)
         {
-          err = state.acpt_result;
-          goto errout;
+          DEBUGASSERT(state.acpt_result > 0);
+          return -state.acpt_result;
         }
 
       /* If net_lockedwait failed, then we were probably reawakened by a
-       * signal. In this case, logic above will have set 'err' to the
+       * signal. In this case, logic above will have set 'ret' to the
        * errno value returned by net_lockedwait().
        */
 
       if (ret < 0)
         {
-          goto errout;
+          return ret;
         }
     }
 
   *newconn = (FAR void *)state.acpt_newconn;
   return OK;
-
-errout:
-  set_errno(err);
-  return ERROR;
 }
 
 #endif /* CONFIG_NET && CONFIG_NSOCKET_DESCRIPTORS && CONFIG_NET_TCP */

@@ -1,14 +1,38 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
-/** @file
+/**
+ * @file
  *  Defines functions to perform Wi-Fi operations
  */
 
@@ -18,7 +42,7 @@
 #include "wwd_wifi.h"
 #include "wwd_debug.h"
 #include "wiced_rtos.h"
-
+#include "wiced_tcpip.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,6 +50,10 @@ extern "C" {
 /******************************************************
  *                    Macros
  ******************************************************/
+
+/**
+ * Macro to determine the band (2.4GHz, 5GHz) of a channel
+ */
 #define WICED_WIFI_CH_TO_BAND( channel ) ( ( wwd_channel_to_wl_band( channel ) == WL_CHANSPEC_BAND_2G ) ? WICED_802_11_BAND_2_4GHZ : WICED_802_11_BAND_5GHZ )
 
 /******************************************************
@@ -36,7 +64,8 @@ extern "C" {
  *                   Enumerations
  ******************************************************/
 
-/** WPS Connection Mode
+/**
+ * WPS Connection Mode
  */
 typedef enum
 {
@@ -44,7 +73,8 @@ typedef enum
     WICED_WPS_PIN_MODE = 2   /**< PIN mode         */
 } wiced_wps_mode_t;
 
-/** WPS Device Category from the WSC2.0 spec
+/**
+ * WPS Device Category from the WSC2.0 spec
  */
 typedef enum
 {
@@ -62,7 +92,8 @@ typedef enum
     WICED_WPS_DEVICE_OTHER                  = 0xFF,  /**< OTHER                  */
 } wiced_wps_device_category_t;
 
-/** WPS Configuration Methods from the WSC2.0 spec
+/**
+ * WPS Configuration Methods from the WSC2.0 spec
  */
 typedef enum
 {
@@ -81,12 +112,14 @@ typedef enum
     WPS_CONFIG_PHYSICAL_DISPLAY_PIN  = 0x4008   /**< PHYSICAL_DISPLAY_PIN */
 } wiced_wps_configuration_method_t;
 
-/** WICED SoftAP events */
+/**
+ * WICED SoftAP events
+ */
 typedef enum
 {
-    WICED_AP_UNKNOWN_EVENT,
-    WICED_AP_STA_JOINED_EVENT,
-    WICED_AP_STA_LEAVE_EVENT,
+    WICED_AP_UNKNOWN_EVENT,         /**< Unknown SoftAP event       */
+    WICED_AP_STA_JOINED_EVENT,      /**< a STA joined our SoftAP    */
+    WICED_AP_STA_LEAVE_EVENT,       /**< a STA left our SoftAP      */
 } wiced_wifi_softap_event_t;
 
 
@@ -94,21 +127,28 @@ typedef enum
  *                 Type Definitions
  ******************************************************/
 
-/** Soft AP event handler */
+/**
+ * Soft AP event handler
+ *
+ * @param[in] event         : SoftAP event that caused this callback
+ * @param[in] mac_address   : Mac address of STA that caused this event
+ *
+ */
 typedef void (*wiced_wifi_softap_event_handler_t)( wiced_wifi_softap_event_t event, const wiced_mac_t* mac_address );
 
 /******************************************************
  *                    Structures
  ******************************************************/
 
-/** Wi-Fi scan result
+/**
+ * Wi-Fi scan result
  */
 typedef struct
 {
-    wiced_scan_result_t ap_details;    /**< Access point details     */
-    wiced_scan_status_t status;
-    void*               user_data;     /**< Pointer to user data passed into wiced_wifi_scan_networks() function */
-    void*               next;
+    wiced_scan_result_t ap_details;   /**< Access point details */
+    wiced_scan_status_t status;       /**< status               */
+    void*               user_data;    /**< Pointer to user data passed into wiced_wifi_scan_networks() function */
+    void*               next;         /**< Pointer to next scan result */
 } wiced_scan_handler_result_t;
 
 /** @cond !ADDTHIS*/
@@ -118,7 +158,8 @@ typedef struct
 typedef wiced_result_t (*wiced_scan_result_handler_t)( wiced_scan_handler_result_t* malloced_scan_result );
 /** @endcond */
 
-/** WPS Device category holds WSC2.0 device category information
+/**
+ * WPS Device category holds WSC2.0 device category information
  */
 typedef struct
 {
@@ -136,7 +177,8 @@ typedef struct
     const uint8_t  add_config_methods_to_probe_resp;   /**< Add configuration methods to probe response for Windows enrollees (this is non-WPS 2.0 compliant) */
 } wiced_wps_device_detail_t;
 
-/** WPS Credentials
+/**
+ * WPS Credentials
  */
 typedef struct
 {
@@ -146,16 +188,49 @@ typedef struct
     uint8_t          passphrase_length;  /**< AP passphrase length */
 } wiced_wps_credential_t;
 
-/** Vendor IE details
+/**
+ * Vendor IE details
  */
 typedef struct
 {
     uint8_t         oui[WIFI_IE_OUI_LENGTH];     /**< Unique identifier for the IE */
-    uint8_t         subtype;                            /**< Sub-type of the IE */
-    void*           data;                               /**< Pointer to IE data */
-    uint16_t        length;                             /**< IE data length */
-    uint16_t        which_packets;                      /**< Mask of the packet in which this IE details to be included */
+    uint8_t         subtype;                     /**< Sub-type of the IE */
+    void*           data;                        /**< Pointer to IE data */
+    uint16_t        length;                      /**< IE data length */
+    uint16_t        which_packets;               /**< Mask of the packet in which this IE details to be included */
 } wiced_custom_ie_info_t;
+
+/**
+ * ds1 mode Offload types
+ */
+typedef enum
+{
+    WICED_OFFLOAD_PATTERN    = 0,   /**< Pattern    */
+    WICED_OFFLOAD_KEEP_ALIVE = 1,   /**< Keep Alive */
+    WICED_OFFLOAD_ARP_HOSTIP = 2,   /**< Host IP    */
+} wiced_offload_t;
+
+/**
+ * Packet pattern
+ */
+typedef struct
+{
+    uint32_t match_offset;  /**< offset in packet to start looking */
+    uint32_t mask_size;     /**< size of mask */
+    uint8_t  *mask;         /**< pointer to memory holding the mask */
+    uint32_t pattern_size;  /**< size of pattern in bytes */
+    uint8_t  *pattern;      /**< pointer to memory holding the pattern */
+} wiced_packet_pattern_t;
+
+/**
+ * Offload value information
+ */
+typedef union
+{
+    wiced_keep_alive_packet_t keep_alive_packet_info;   /**< Keep Alive info    */
+    wiced_packet_pattern_t    pattern;                  /**< Packet Pattern     */
+    wiced_ip_address_t        ipv4_address;             /**< IPv4 address       */
+} wiced_offload_value_t;
 
 /******************************************************
  *               Global Variables
@@ -174,8 +249,17 @@ typedef struct
  */
 /*****************************************************************************/
 
+/**
+ * Halt any joins, including ongoing ones
+ * @param[in] halt: WICED_TRUE: halt all join attempts; WICED_FALSE: allow join attempts to proceed
+ * !!!!NOTE: wwd_wifi_join_halt( WICED_FALSE ) needs to be called after any wwd_wifi_join_halt( WICED_TRUE ) call
+ * to allow subsequent join attempts to proceed.
+ * @return @ref wiced_result_t WICED_SUCCESS
+ */
+wiced_result_t wiced_wifi_join_halt( wiced_bool_t halt );
 
-/** Negotiates securely with a Wi-Fi Protected Setup (WPS) registrar (usually an
+/**
+ * Negotiates securely with a Wi-Fi Protected Setup (WPS) registrar (usually an
  *  Access Point) and obtains credentials necessary to join the AP.
  *
  * @param[in] mode              : Indicates whether to use Push-Button (PBC) or PIN Number mode for WPS
@@ -191,7 +275,8 @@ typedef struct
 extern wiced_result_t wiced_wps_enrollee( wiced_wps_mode_t mode, const wiced_wps_device_detail_t* details, const char* password, wiced_wps_credential_t* credentials, uint16_t credential_count );
 
 
-/** Negotiates securely with a Wi-Fi Protected Setup (WPS) enrollee (usually a
+/**
+ * Negotiates securely with a Wi-Fi Protected Setup (WPS) enrollee (usually a
  *  client device) and provides credentials necessary to join a SoftAP.
  *
  * @param[in] mode              : Indicates whether to use Push-Button (PBC) or PIN Number mode for WPS
@@ -207,7 +292,8 @@ extern wiced_result_t wiced_wps_enrollee( wiced_wps_mode_t mode, const wiced_wps
 extern wiced_result_t wiced_wps_registrar( wiced_wps_mode_t mode, const wiced_wps_device_detail_t* details, const char* password, wiced_wps_credential_t* credentials, uint16_t credential_count );
 
 
-/** Scans for Wi-Fi networks
+/**
+ * Scans for Wi-Fi networks
  *
  * @param[in] results_handler  : A function pointer for the handler that will process
  *                               the network details as they arrive.
@@ -221,7 +307,18 @@ extern wiced_result_t wiced_wps_registrar( wiced_wps_mode_t mode, const wiced_wp
  */
 extern wiced_result_t wiced_wifi_scan_networks( wiced_scan_result_handler_t results_handler, void* user_data );
 
-/** Scans for Wi-Fi networks added using wwd_pno_add_network.  Scan will be done in an efficient, power-saving type manner.
+/**
+ * Enables/disables scans for wi-fi networks, including most roam scans done by firmware.
+ *   !!!WARNING!!! Disable will abort any ongoing scans.
+ *   Note: enable can used to allow firmware to do its normal roam scanning and any other internal scans.
+ *   Calling wiced_wifi_scan_networks after a disable will cause wiced_wifi_scan_enable to be invoked.
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_wifi_scan_disable( void );
+extern wiced_result_t wiced_wifi_scan_enable( void );
+
+/**
+ * Scans for Wi-Fi networks added using wwd_pno_add_network.  Scan will be done in an efficient, power-saving type manner.
  * @param[in] ssid        : SSID of the AP to search for during offloaded scan
  * @param[in] security  : security of the network to search for during offloaded scan
  * @param[in] results_handler  : A function pointer for the handler that will process
@@ -240,7 +337,8 @@ extern wiced_result_t wiced_wifi_pno_start( wiced_ssid_t *ssid, wiced_security_t
 extern wiced_result_t wiced_wifi_pno_stop( void );
 
 
-/** Finds the AP and it's information for the given SSID
+/**
+ * Finds the AP and it's information for the given SSID
  *
  * @param[in] ssid                     : SSID of the access point for which user wants to find information.
  *                                       It must be a NULL terminated string 32 characters or less
@@ -252,10 +350,20 @@ extern wiced_result_t wiced_wifi_pno_stop( void );
  *
  * @return @ref wiced_result_t
  */
+
 extern wiced_result_t wiced_wifi_find_ap( const char* ssid, wiced_scan_result_t* ap_info, const uint16_t* optional_channel_list);
 
+/** Find the least congested channel in the given band
+ *
+ * @param[in] band                  : WICED_802_11_BAND_2_4GHZ, WICED_802_11_BAND_5GHZ
+ * @param[out] channel              : Pointer to least congested channel
+ * @param[out] cca_score            : Pointer to congestion score of the indicated channel [0-255]
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_wifi_find_best_channel(int32_t band, uint32_t *channel, uint8_t *cca_score);
 
-/** Add Wi-Fi custom IE
+/**
+ * Add Wi-Fi custom IE
  *
  * @param[in] interface : Interface to add custom IE
  * @param[in] ie_info   : Pointer to the structure which contains custom IE information
@@ -264,7 +372,8 @@ extern wiced_result_t wiced_wifi_find_ap( const char* ssid, wiced_scan_result_t*
  */
 extern wiced_result_t wiced_wifi_add_custom_ie( wiced_interface_t interface, const wiced_custom_ie_info_t* ie_info );
 
-/** Remove Wi-Fi custom IE
+/**
+ * Remove Wi-Fi custom IE
  *
  * @param[in] interface : Interface to remove custom IE
  * @param[in] ie_info   : Pointer to the structure which contains custom IE information
@@ -273,13 +382,15 @@ extern wiced_result_t wiced_wifi_add_custom_ie( wiced_interface_t interface, con
  */
 extern wiced_result_t wiced_wifi_remove_custom_ie( wiced_interface_t interface, const wiced_custom_ie_info_t* ie_info );
 
-/** Brings up Wi-Fi core
+/**
+ * Brings up Wi-Fi core
  *
  * @return @ref wiced_result_t
  */
 extern wiced_result_t wiced_wifi_up( void );
 
-/** Bring down Wi-Fi core preserving calibration
+/**
+ * Bring down Wi-Fi core preserving calibration
  *
  *  WARNING:
  *     This brings down the Wi-Fi core and all existing network connections.
@@ -290,7 +401,8 @@ extern wiced_result_t wiced_wifi_up( void );
  */
 extern wiced_result_t wiced_wifi_down( void );
 
-/** Set roam trigger level
+/**
+ * Set roam trigger level
  *
  * @param[in] trigger_level : Trigger level in dBm. The Wi-Fi device will search for a new AP to connect to once the \n
  *                            signal from the AP (it is currently associated with) drops below the roam trigger level.
@@ -304,7 +416,8 @@ extern wiced_result_t wiced_wifi_down( void );
 static inline wiced_result_t wiced_wifi_set_roam_trigger( int32_t trigger_level );
 
 
-/** Get roam trigger level
+/**
+ * Get roam trigger level
  *
  * @param trigger_level  : Trigger level in dBm. Pointer to store current roam trigger level value
  * @return  @ref wiced_result_t
@@ -312,7 +425,8 @@ static inline wiced_result_t wiced_wifi_set_roam_trigger( int32_t trigger_level 
 static inline wiced_result_t wiced_wifi_get_roam_trigger( int32_t* trigger_level );
 
 
-/** Get the current channel on STA interface
+/**
+ * Get the current channel on STA interface
  *
  * @param[out] channel : A pointer to the variable where the channel value will be written
  *
@@ -321,7 +435,8 @@ static inline wiced_result_t wiced_wifi_get_roam_trigger( int32_t* trigger_level
 static inline wiced_result_t wiced_wifi_get_channel( uint32_t* channel );
 
 
-/** Retrieves the current Media Access Control (MAC) address
+/**
+ * Retrieves the current Media Access Control (MAC) address
  *  (or Ethernet hardware address) of the 802.11 device
  *
  * @param mac Pointer to a variable that the current MAC address will be written to
@@ -330,7 +445,8 @@ static inline wiced_result_t wiced_wifi_get_channel( uint32_t* channel );
 static inline wiced_result_t wiced_wifi_get_mac_address( wiced_mac_t* mac );
 
 
-/** Get WLAN counter statistics for the interface provided
+/**
+ * Get WLAN counter statistics for the interface provided
  *
  * @param[in] interface : The interface for which the counters are requested
  * @param[out] counters : A pointer to the structure where the counter data will be written
@@ -340,7 +456,8 @@ static inline wiced_result_t wiced_wifi_get_mac_address( wiced_mac_t* mac );
 static inline wiced_result_t wiced_wifi_get_counters( wwd_interface_t interface, wiced_counters_t* counters );
 
 
-/** Sets the 802.11 powersave listen interval for a Wi-Fi client, and communicates
+/**
+ * Sets the 802.11 powersave listen interval for a Wi-Fi client, and communicates
  *  the listen interval to the Access Point. The listen interval will be set to
  *  (listen_interval x time_unit) seconds.
  *
@@ -366,7 +483,8 @@ static inline wiced_result_t wiced_wifi_get_counters( wwd_interface_t interface,
 static inline wiced_result_t wiced_wifi_set_listen_interval( uint8_t listen_interval, wiced_listen_interval_time_unit_t time_unit );
 
 
-/** Sets the 802.11 powersave beacon listen interval communicated to Wi-Fi Access Points
+/**
+ * Sets the 802.11 powersave beacon listen interval communicated to Wi-Fi Access Points
  *
  *  This function is used by Wi-Fi clients to set the value of the beacon
  *  listen interval sent to the AP (in the association request frame) during
@@ -386,7 +504,8 @@ static inline wiced_result_t wiced_wifi_set_listen_interval( uint8_t listen_inte
 static inline wiced_result_t wiced_wifi_set_listen_interval_assoc( uint16_t listen_interval );
 
 
-/** Gets the current value of all beacon listen interval variables
+/**
+ * Gets the current value of all beacon listen interval variables
  *
  * @param[out] li : The current value of all listen interval settings
  *
@@ -395,7 +514,8 @@ static inline wiced_result_t wiced_wifi_set_listen_interval_assoc( uint16_t list
 static inline wiced_result_t wiced_wifi_get_listen_interval( wiced_listen_interval_t* li );
 
 
-/** Register soft AP event handler
+/**
+ * Register soft AP event handler
  *
  * @param[in] softap_event_handler  : A function pointer to the event handler
   *
@@ -404,27 +524,88 @@ static inline wiced_result_t wiced_wifi_get_listen_interval( wiced_listen_interv
 extern wiced_result_t wiced_wifi_register_softap_event_handler( wiced_wifi_softap_event_handler_t softap_event_handler );
 
 
-/** Unregister soft AP event handler
+/**
+ * Unregister soft AP event handler
  *
  * @return @ref wiced_result_t
  */
 extern wiced_result_t wiced_wifi_unregister_softap_event_handler( void );
 
-/** event handler to get RRM event header and RRM event data
+/**
+ * Enter deep sleep 1 (DS1) state.
+ *    First init specified offload type, wait the number of seconds, then enter DS1.
+ * @param[in] interface : interface to use for offload start and DS1 enter
+ * @param[in] offload_type : type of offload to init
+ * @param[in] offload_value : parameters for the offload
+ * @param[in]  ulp_wait_milliseconds : seconds to wait prior to entering DS1
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_wifi_enter_ds1( wiced_interface_t interface, wiced_offload_t offload_type, wiced_offload_value_t *offload_value, uint32_t ulp_wait_milliseconds );
+
+/**
+ * Exit deep sleep 1 (DS1) state.
+ * @param[in] interface : interface to use for DS1 exit
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_wifi_exit_ds1( wiced_interface_t interface );
+
+/**
+ * Start soft AP with custom IE
+ *
+ * @param[in] AP's ssid
+ * @param[in] security type
+ * @param[in] security key
+ * @param[in] chanel
+ * @param[in] custom IE
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_wifi_start_ap_with_custom_ie( wiced_ssid_t* ssid, wiced_security_t security, const char* key, uint8_t channel, const wiced_custom_ie_info_t* ie);
+
+/**
+ * Stop soft AP
+ *
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_stop_ap( void );
+
+
+/** start soft AP with custom IE
+ *
+ * @param[in] AP's ssid
+ * @param[in] security type
+ * @param[in] security key
+ * @param[in] chanel
+ * @param[in] custom IE
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_wifi_start_ap_with_custom_ie( wiced_ssid_t* ssid, wiced_security_t security, const char* key, uint8_t channel, const wiced_custom_ie_info_t* ie);
+
+/**
+ * Stop soft AP
+ *
+ * @return @ref wiced_result_t
+ */
+extern wiced_result_t wiced_stop_ap( void );
+
+
+/**
+* Event handler to get RRM event header and RRM event data
  * @param[out]  const void* event_header :  event header
  * @param[out]  const uint8_t* event_data: event_data
  *
  */
 typedef void (*wiced_wifi_rrm_event_handler_t)( const void* event_header, const uint8_t* event_data );
 
-/* Register RRM event handler
+/**
+ * Register RRM event handler
  * @param[in] wiced_wifi_rrm_event_handler_t : A function pointer to the event handler
  *
  * @return @ref wiced_result_t
  */
 extern wiced_result_t wiced_wifi_register_rrm_event_handler( wiced_wifi_rrm_event_handler_t event_handler );
 
-/* DeRegister RRM event handler
+/**
+ * DeRegister RRM event handler
  * @param void:
  *
  * @return @ref wiced_result_t
@@ -443,7 +624,8 @@ extern wiced_result_t wiced_wifi_unregister_pno_callback( void );
  */
 /*****************************************************************************/
 
-/** Enables powersave mode without regard for throughput reduction
+/**
+ * Enables powersave mode without regard for throughput reduction
  *
  * This function enables (legacy) 802.11 PS-Poll mode and should be used
  * to achieve the lowest power consumption possible when the Wi-Fi device
@@ -460,7 +642,28 @@ extern wiced_result_t wiced_wifi_unregister_pno_callback( void );
 static inline wiced_result_t wiced_wifi_enable_powersave( void );
 
 
-/** Enables powersave mode while attempting to maximise throughput
+/**
+ * Enables powersave mode on specified interface without regard for throughput reduction
+ *
+ * This function enables (legacy) 802.11 PS-Poll mode and should be used
+ * to achieve the lowest power consumption possible when the Wi-Fi device
+ * is primarily passively listening to the network
+ *
+ * @warning An accurate 32kHz clock reference must be connected to the WLAN        \n
+ *          sleep clock input pin while the WLAN chip is in powersave mode!        \n
+ *          Failure to meet this requirement will result in poor WLAN performance. \n
+ *          The sleep clock reference is typically configured in the file:         \n
+ *          <WICED-SDK>/include/platforms/<PLATFORM_NAME>/platform.h
+ *
+ * @param[in] interface             : The variable to set WLAN interface type
+ *
+ * @return @ref wiced_result_t
+ */
+static inline wiced_result_t wiced_wifi_enable_powersave_interface( wiced_interface_t interface );
+
+
+/**
+ * Enables powersave mode while attempting to maximise throughput
  *
  * Network traffic is typically bursty. Reception of a packet often means that another
  * packet will be received shortly afterwards (and vice versa for transmit)
@@ -485,11 +688,47 @@ static inline wiced_result_t wiced_wifi_enable_powersave( void );
 static inline wiced_result_t wiced_wifi_enable_powersave_with_throughput( uint16_t return_to_sleep_delay_ms );
 
 
-/** Disable 802.11 power save mode
+/**
+ * Enables powersave mode on specified interface while attempting to maximise throughput
+ *
+ * Network traffic is typically bursty. Reception of a packet often means that another
+ * packet will be received shortly afterwards (and vice versa for transmit)
+ * \p
+ * In high throughput powersave mode, rather then entering powersave mode immediately
+ * after receiving or sending a packet, the WLAN chip will wait for a timeout period before
+ * returning to sleep
+ *
+ * @note return_to_sleep_delay must be set to a multiple of 10.
+ *
+ *
+ * @warning An accurate 32kHz clock reference must be connected to the WLAN        \n
+ *          sleep clock input pin while the WLAN chip is in powersave mode!        \n
+ *          Failure to meet this requirement will result in poor WLAN performance. \n
+ *          The sleep clock reference is typically configured in the file:         \n
+ *          <WICED-SDK>/include/platforms/<PLATFORM_NAME>/platform.h
+ *
+ * @param[in] return_to_sleep_delay : Timeout period (in milliseconds) before the WLAN chip returns to sleep
+ * @param[in] interface             : The variable to set WLAN interface type
+ *
+ * @return @ref wiced_result_t
+ */
+static inline wiced_result_t wiced_wifi_enable_powersave_with_throughput_interface( uint16_t return_to_sleep_delay_ms, wiced_interface_t interface );
+
+/**
+ * Disable 802.11 power save mode
  *
  * @return @ref wiced_result_t
  */
 static inline wiced_result_t wiced_wifi_disable_powersave( void );
+
+/**
+ * Disable 802.11 power save mode on specified interface
+ *
+ * @param[in] interface             : The variable to set WLAN interface type
+ *
+ * @return @ref wiced_result_t
+ */
+static inline wiced_result_t wiced_wifi_disable_powersave_interface( wiced_interface_t interface );
 
 /** @} */
 
@@ -502,7 +741,8 @@ static inline wiced_result_t wiced_wifi_disable_powersave( void );
  */
 /*****************************************************************************/
 
-/** Sets the packet filter mode (or rule) to either forward or discard packets on a match
+/**
+ * Sets the packet filter mode (or rule) to either forward or discard packets on a match
  *
  * @param[in] mode : Packet filter mode
  *
@@ -530,7 +770,8 @@ static inline wiced_result_t wiced_wifi_set_packet_filter_mode( wiced_packet_fil
 static inline wiced_result_t wiced_wifi_add_packet_filter( const wiced_packet_filter_t* settings );
 
 
-/** Removes (uninstalls) a previously installed packet filter
+/**
+ * Removes (uninstalls) a previously installed packet filter
  *
  * @param[in] filter_id : The unique user assigned ID for the filter
  *
@@ -548,7 +789,8 @@ static inline wiced_result_t wiced_wifi_remove_packet_filter( uint8_t filter_id 
 static inline wiced_result_t wiced_wifi_enable_packet_filter( uint8_t filter_id );
 
 
-/** Disables a previously installed packet filter
+/**
+ * Disables a previously installed packet filter
  *
  * @param[in] filter_id : The unique user assigned ID for the filter
  *
@@ -557,7 +799,8 @@ static inline wiced_result_t wiced_wifi_enable_packet_filter( uint8_t filter_id 
 static inline wiced_result_t wiced_wifi_disable_packet_filter( uint8_t filter_id );
 
 
-/** Gets packet filter statistics including packets matched, packets forwarded and packets discarded.
+/**
+ * Gets packet filter statistics including packets matched, packets forwarded and packets discarded.
  *
  * @param[in]  filter_id : The unique user assigned ID for the filter
  * @param[out] stats     : A pointer to a structure that will be populated with filter statistics
@@ -567,7 +810,8 @@ static inline wiced_result_t wiced_wifi_disable_packet_filter( uint8_t filter_id
 static inline wiced_result_t wiced_wifi_get_packet_filter_stats( uint8_t filter_id, wiced_packet_filter_stats_t* stats );
 
 
-/** Clear all packet filter statistics
+/**
+ * Clear all packet filter statistics
  *
  * @param[in] filter_id : The unique user assigned ID for the filter
  *
@@ -576,7 +820,8 @@ static inline wiced_result_t wiced_wifi_get_packet_filter_stats( uint8_t filter_
 static inline wiced_result_t wiced_wifi_clear_packet_filter_stats( uint32_t filter_id );
 
 
-/** Get details of packet filters
+/**
+ * Get details of packet filters
  *
  * @Note: does not retrieve the Filter mask and pattern. use @ref wiced_wifi_get_packet_filter_mask_and_pattern to retreive those.
  *
@@ -589,7 +834,8 @@ static inline wiced_result_t wiced_wifi_clear_packet_filter_stats( uint32_t filt
  */
 static inline wiced_result_t wiced_wifi_get_packet_filters( uint32_t max_count, uint32_t offset, wiced_packet_filter_t* list,  uint32_t* count_out );
 
-/** Get the filter pattern and mask for a packet filters
+/**
+ * Get the filter pattern and mask for a packet filters
  *
  * @param[in] filter_id : The id used to create the packet filter
  * @param[in] max_size  : Size of the supplied pattern and mask buffers in bytes
@@ -612,7 +858,8 @@ static inline wiced_result_t wiced_wifi_get_packet_filter_mask_and_pattern( uint
  */
 /*****************************************************************************/
 
-/** Add a network keep alive packet
+/**
+ * Add a network keep alive packet
  *
  * Keep alive functionality enables the WLAN chip to automatically send
  * an arbitrary IP packet and/or 802.11 Null Function data frame at
@@ -633,7 +880,8 @@ static inline wiced_result_t wiced_wifi_get_packet_filter_mask_and_pattern( uint
 static inline wiced_result_t wiced_wifi_add_keep_alive( wiced_keep_alive_packet_t* keep_alive_packet_info );
 
 
-/** Get information about a keep alive packet
+/**
+ * Get information about a keep alive packet
  *
  * \li The ID of the keep alive packet should be provided in the keep_alive_info structure
  * \li The application must pre-allocate a buffer to store the keep alive packet that is read from the WLAN chip
@@ -647,7 +895,8 @@ static inline wiced_result_t wiced_wifi_add_keep_alive( wiced_keep_alive_packet_
 static inline wiced_result_t wiced_wifi_get_keep_alive( wiced_keep_alive_packet_t* keep_alive_packet_info );
 
 
-/** Disable a keep alive packet specified by id
+/**
+ * Disable a keep alive packet specified by id
  *
  * @param[in] id : ID of the keep alive packet to be disabled
  *
@@ -657,7 +906,8 @@ static inline wiced_result_t wiced_wifi_disable_keep_alive( uint8_t id );
 
 /** @} */
 
-/** Gets information about associated clients.
+/**
+ * Gets information about associated clients.
  *
  * @note Only applicable if softAP interface is up
  *
@@ -669,7 +919,8 @@ static inline wiced_result_t wiced_wifi_disable_keep_alive( uint8_t id );
 static inline wiced_result_t wiced_wifi_get_associated_client_list( void* client_list_buffer, uint16_t buffer_length );
 
 
-/** Gets information about the AP the client interface is currently associated to
+/**
+ * Gets information about the AP the client interface is currently associated to
  *
  * @note Only applicable if STA (client) interface is associated to an AP
  *
@@ -680,7 +931,8 @@ static inline wiced_result_t wiced_wifi_get_associated_client_list( void* client
  */
 static inline wiced_result_t wiced_wifi_get_ap_info( wiced_bss_info_t* ap_info, wiced_security_t* security );
 
-/** Sets the HT mode for the given interface
+/**
+ * Sets the HT mode for the given interface
  *
  *  NOTE:
  *     Ensure WiFi core and network is down before invoking this function.
@@ -693,7 +945,8 @@ static inline wiced_result_t wiced_wifi_get_ap_info( wiced_bss_info_t* ap_info, 
  */
 static inline wiced_result_t wiced_wifi_set_ht_mode( wiced_interface_t interface, wiced_ht_mode_t ht_mode );
 
-/** Gets the HT mode for the given interface
+/**
+ * Gets the HT mode for the given interface
  *
  * @param[out]  ht_mode     : Pointer to the enum to store the currently used HT mode of the given interface.
  * @param[in]   interface   : Interface for which HT mode to be identified.
@@ -702,7 +955,8 @@ static inline wiced_result_t wiced_wifi_set_ht_mode( wiced_interface_t interface
  */
 static inline wiced_result_t wiced_wifi_get_ht_mode( wiced_interface_t interface, wiced_ht_mode_t* ht_mode );
 
-/** Disable / enable 11n mode
+/**
+ * Disable / enable 11n mode
  *
  *  NOTE:
  *     Ensure WiFi core and network is down before invoking this function.
@@ -719,6 +973,7 @@ static inline wiced_result_t wiced_wifi_disable_11n_support( wiced_interface_t i
 
 /******************************************************
  *           Inline Function Implementations
+ *           (see documentation above)
  ******************************************************/
 
 static inline ALWAYS_INLINE wiced_result_t wiced_wifi_set_roam_trigger( int32_t trigger_level )
@@ -763,17 +1018,32 @@ static inline ALWAYS_INLINE wiced_result_t wiced_wifi_get_listen_interval( wiced
 
 static inline ALWAYS_INLINE wiced_result_t wiced_wifi_enable_powersave( void )
 {
-    return (wiced_result_t) wwd_wifi_enable_powersave( );
+    return (wiced_result_t) wwd_wifi_enable_powersave_interface( WWD_STA_INTERFACE );
+}
+
+static inline ALWAYS_INLINE wiced_result_t wiced_wifi_enable_powersave_interface( wiced_interface_t interface )
+{
+    return (wiced_result_t) wwd_wifi_enable_powersave_interface( (wwd_interface_t)interface );
 }
 
 static inline ALWAYS_INLINE wiced_result_t wiced_wifi_enable_powersave_with_throughput( uint16_t return_to_sleep_delay_ms )
 {
-    return (wiced_result_t) wwd_wifi_enable_powersave_with_throughput( return_to_sleep_delay_ms );
+    return (wiced_result_t) wwd_wifi_enable_powersave_with_throughput_interface( return_to_sleep_delay_ms, WWD_STA_INTERFACE );
+}
+
+static inline ALWAYS_INLINE wiced_result_t wiced_wifi_enable_powersave_with_throughput_interface( uint16_t return_to_sleep_delay_ms, wiced_interface_t interface )
+{
+    return (wiced_result_t) wwd_wifi_enable_powersave_with_throughput_interface( return_to_sleep_delay_ms, (wwd_interface_t)interface );
 }
 
 static inline ALWAYS_INLINE wiced_result_t wiced_wifi_disable_powersave( void )
 {
-    return (wiced_result_t) wwd_wifi_disable_powersave( );
+    return (wiced_result_t) wwd_wifi_disable_powersave_interface( WWD_STA_INTERFACE );
+}
+
+static inline ALWAYS_INLINE wiced_result_t wiced_wifi_disable_powersave_interface( wiced_interface_t interface )
+{
+    return (wiced_result_t) wwd_wifi_disable_powersave_interface( (wwd_interface_t)interface );
 }
 
 static inline ALWAYS_INLINE wiced_result_t wiced_wifi_set_packet_filter_mode( wiced_packet_filter_mode_t mode )

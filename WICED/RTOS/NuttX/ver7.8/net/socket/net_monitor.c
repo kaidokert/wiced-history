@@ -51,129 +51,20 @@
 #include "socket/socket.h"
 
 /****************************************************************************
- * Private Types
- ****************************************************************************/
-
-/****************************************************************************
  * Private Function Prototypes
  ****************************************************************************/
 
-static void connection_event(FAR struct tcp_conn_s *conn, uint16_t flags);
+static void connection_closed(FAR struct socket *psock, uint32_t flags);
+static uint32_t connection_event(FAR struct net_driver_s *dev,
+                                 FAR void *pvconn, FAR void *pvpriv,
+                                 uint32_t flags);
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
-/****************************************************************************
- * Name: connection_event
- *
- * Description:
- *   Some connection related event has occurred
- *
- * Parameters:
- *   conn     The connection structure associated with the socket
- *   flags    Set of events describing why the callback was invoked
- *
- * Returned Value:
- *   None
- *
- * Assumptions:
- *   Running at the interrupt level
- *
- ****************************************************************************/
-
-static void connection_event(FAR struct tcp_conn_s *conn, uint16_t flags)
-{
-  FAR struct socket *psock = (FAR struct socket *)conn->connection_private;
-
-  if (psock)
-    {
-      nllvdbg("flags: %04x s_flags: %02x\n", flags, psock->s_flags);
-
-      /* TCP_CLOSE, TCP_ABORT, or TCP_TIMEDOUT: Loss-of-connection events */
-
-      if ((flags & (TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT)) != 0)
-        {
-          net_lostconnection(psock, flags);
-        }
-
-      /* TCP_CONNECTED: The socket is successfully connected */
-
-      else if ((flags & TCP_CONNECTED) != 0)
-        {
-          /* Indicate that the socket is now connected */
-
-          psock->s_flags |= _SF_CONNECTED;
-          psock->s_flags &= ~_SF_CLOSED;
-        }
-    }
-}
 
 /****************************************************************************
- * Public Functions
- ****************************************************************************/
-/****************************************************************************
- * Name: net_startmonitor
- *
- * Description:
- *   Set up to receive TCP connection state changes for a given socket
- *
- * Input Parameters:
- *   psock - The socket of interest
- *
- * Returned Value:
- *   For now, this function always returns OK.
- *
- ****************************************************************************/
-
-int net_startmonitor(FAR struct socket *psock)
-{
-  FAR struct tcp_conn_s *conn = psock->s_conn;
-
-  DEBUGASSERT(psock && conn);
-
-  /* Set up to receive callbacks on connection-related events */
-
-  conn->connection_private = (void*)psock;
-  conn->connection_event   = connection_event;
-
-  /* Check if the connection has already been closed before any callbacks have
-   * been registered. (Maybe the connection is lost before accept has registered
-   * the monitoring callback.)
-   */
-
-  if (!(conn->tcpstateflags == TCP_ESTABLISHED ||
-        conn->tcpstateflags == TCP_SYN_RCVD))
-    {
-      connection_event(conn, TCP_CLOSE);
-    }
-
-  return OK;
-}
-
-/****************************************************************************
- * Name: net_stopmonitor
- *
- * Description:
- *   Stop monitoring TCP connection changes for a given socket
- *
- * Input Parameters:
- *   conn - The TCP connection of interest
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
-void net_stopmonitor(FAR struct tcp_conn_s *conn)
-{
-  DEBUGASSERT(conn);
-
-  conn->connection_private = NULL;
-  conn->connection_event   = NULL;
-}
-
-/****************************************************************************
- * Name: net_lostconnection
+ * Name: connection_closed
  *
  * Description:
  *   Called when a loss-of-connection event has occurred.
@@ -186,19 +77,18 @@ void net_stopmonitor(FAR struct tcp_conn_s *conn)
  *   None
  *
  * Assumptions:
- *   Running at the interrupt level
+ *   The caller holds the network lock.
  *
  ****************************************************************************/
 
-void net_lostconnection(FAR struct socket *psock, uint16_t flags)
+static void connection_closed(FAR struct socket *psock, uint32_t flags)
 {
-  DEBUGASSERT(psock);
-
   /* These loss-of-connection events may be reported:
    *
    *   TCP_CLOSE: The remote host has closed the connection
    *   TCP_ABORT: The remote host has aborted the connection
    *   TCP_TIMEDOUT: Connection aborted due to too many retransmissions.
+   *   NETDEV_DOWN: The network device went down
    *
    * And we need to set these two socket status bits appropriately:
    *
@@ -218,14 +108,246 @@ void net_lostconnection(FAR struct socket *psock, uint16_t flags)
       psock->s_flags &= ~_SF_CONNECTED;
       psock->s_flags |= _SF_CLOSED;
     }
-  else if ((flags & (TCP_ABORT | TCP_TIMEDOUT)) != 0)
+  else if ((flags & (TCP_ABORT | TCP_TIMEDOUT | NETDEV_DOWN)) != 0)
     {
       /* The loss of connection was less than graceful.  This will (eventually)
        * be reported as an ENOTCONN error.
        */
 
-      psock->s_flags &= ~(_SF_CONNECTED |_SF_CLOSED);
+      psock->s_flags &= ~(_SF_CONNECTED | _SF_CLOSED);
     }
+}
+
+/****************************************************************************
+ * Name: connection_event
+ *
+ * Description:
+ *   Some connection related event has occurred
+ *
+ * Parameters:
+ *   dev      The device which as active when the event was detected.
+ *   conn     The connection structure associated with the socket
+ *   flags    Set of events describing why the callback was invoked
+ *
+ * Returned Value:
+ *   None
+ *
+ * Assumptions:
+ *   The network is locked.
+ *
+ ****************************************************************************/
+
+static uint32_t connection_event(FAR struct net_driver_s *dev,
+                                 FAR void *pvconn, FAR void *pvpriv,
+                                 uint32_t flags)
+{
+  FAR struct socket *psock = (FAR struct socket *)pvpriv;
+
+  if (psock)
+    {
+      nllvdbg("flags: %04x s_flags: %02x\n", flags, psock->s_flags);
+
+      /* TCP_DISCONN_EVENTS: TCP_CLOSE, TCP_ABORT, TCP_TIMEDOUT, or
+       * NETDEV_DOWN.  All loss-of-connection events.
+       */
+
+      if ((flags & TCP_DISCONN_EVENTS) != 0)
+        {
+          connection_closed(psock, flags);
+        }
+
+      /* TCP_CONNECTED: The socket is successfully connected */
+
+      else if ((flags & TCP_CONNECTED) != 0)
+        {
+#if 0 /* REVISIT: Assertion fires.  Why? */
+#ifdef CONFIG_NETDEV_MULTINIC
+          FAR struct tcp_conn_s *conn = (FAR struct tcp_conn_s *)psock->s_conn;
+
+          /* Make sure that this is the device bound to the connection */
+
+          DEBUGASSERT(conn->dev == NULL || conn->dev == dev);
+          conn->dev = dev;
+#endif
+#endif
+
+          /* If there is no local address assigned to the socket (perhaps
+           * because it was INADDR_ANY), then assign it the address of the
+           * connecting device.
+           *
+           * TODO: Implement this.
+           */
+
+          /* Indicate that the socket is now connected */
+
+          psock->s_flags |= _SF_CONNECTED;
+          psock->s_flags &= ~_SF_CLOSED;
+        }
+    }
+
+  return flags;
+}
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+/****************************************************************************
+ * Name: net_startmonitor
+ *
+ * Description:
+ *   Set up to receive TCP connection state changes for a given socket
+ *
+ * Input Parameters:
+ *   psock - The socket of interest
+ *
+ * Returned Value:
+ *   On success, net_startmonitor returns OK; On any failure,
+ *   net_startmonitor will return a negated errno value.  The only failure
+ *   that can occur is if the socket has already been closed and, in this
+ *   case, -ENOTCONN is returned.
+ *
+ * Assumptions:
+ *   The caller holds the network lock (if not, it will be locked momentarily
+ *   by this function).
+ *
+ ****************************************************************************/
+
+int net_startmonitor(FAR struct socket *psock)
+{
+  FAR struct tcp_conn_s *conn;
+  FAR struct devif_callback_s *cb;
+  net_lock_t save;
+
+  DEBUGASSERT(psock != NULL && psock->s_conn != NULL);
+  conn = (FAR struct tcp_conn_s *)psock->s_conn;
+
+  /* Check if the connection has already been closed before any callbacks
+   * have been registered. (Maybe the connection is lost before accept has
+   * registered the monitoring callback.)
+   */
+
+  save = net_lock();
+  if (!(conn->tcpstateflags == TCP_ESTABLISHED ||
+        conn->tcpstateflags == TCP_SYN_RCVD))
+    {
+      /* Invoke the TCP_CLOSE connection event now */
+
+      (void)connection_event(NULL, conn, psock, TCP_CLOSE);
+
+      /* Make sure that the monitor is stopped */
+
+      conn->connection_private = NULL;
+      conn->connection_devcb   = NULL;
+      conn->connection_event   = NULL;
+
+      /* And return -ENOTCONN to indicate the the monitor was not started
+       * because the socket was already disconnected.
+       */
+
+      net_unlock(save);
+      return -ENOTCONN;
+    }
+
+  DEBUGASSERT(conn->connection_event == NULL &&
+              conn->connection_devcb == NULL);
+
+  /* Allocate a callback structure that we will use to get callbacks if
+   * the network goes down.
+   */
+
+  cb = tcp_monitor_callback_alloc(conn);
+  if (cb != NULL)
+    {
+      cb->event = connection_event;
+      cb->priv  = (FAR void *)psock;
+      cb->flags = NETDEV_DOWN;
+    }
+
+  conn->connection_devcb = cb;
+
+  /* Set up to receive callbacks on connection-related events */
+
+  conn->connection_private = (FAR void *)psock;
+  conn->connection_event   = connection_event;
+
+  net_unlock(save);
+  return OK;
+}
+
+/****************************************************************************
+ * Name: net_stopmonitor
+ *
+ * Description:
+ *   Stop monitoring TCP connection changes for a given socket
+ *
+ * Input Parameters:
+ *   conn - The TCP connection of interest
+ *
+ * Returned Value:
+ *   None
+ *
+ * Assumptions:
+ *   The caller holds the network lock (if not, it will be locked momentarily
+ *   by this function).
+ *
+ ****************************************************************************/
+
+void net_stopmonitor(FAR struct tcp_conn_s *conn)
+{
+  net_lock_t save;
+
+  DEBUGASSERT(conn);
+
+  /* Free any allocated device event callback structure */
+
+  save = net_lock();
+  if (conn->connection_devcb)
+    {
+      tcp_monitor_callback_free(conn, conn->connection_devcb);
+    }
+
+  /* Nullify all connection event data */
+
+  conn->connection_private = NULL;
+  conn->connection_devcb   = NULL;
+  conn->connection_event   = NULL;
+  net_unlock(save);
+}
+
+/****************************************************************************
+ * Name: net_lostconnection
+ *
+ * Description:
+ *   Called when a loss-of-connection event has occurred.
+ *
+ * Parameters:
+ *   psock    The TCP socket structure associated.
+ *   flags    Set of connection events events
+ *
+ * Returned Value:
+ *   None
+ *
+ * Assumptions:
+ *   The caller holds the network lock (if not, it will be locked momentarily
+ *   by this function).
+ *
+ ****************************************************************************/
+
+void net_lostconnection(FAR struct socket *psock, uint32_t flags)
+{
+  net_lock_t save;
+
+  DEBUGASSERT(psock != NULL && psock->s_conn != NULL);
+
+  /* Close the connection */
+
+  save = net_lock();
+  connection_closed(psock, flags);
+
+  /* Stop the network monitor */
+
+  net_stopmonitor((FAR struct tcp_conn_s *)psock->s_conn);
+  net_unlock(save);
 }
 
 #endif /* CONFIG_NET && CONFIG_NET_TCP */

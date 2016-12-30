@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -735,6 +758,8 @@ static wiced_result_t wiced_ota2_service_wget_update(wiced_ota2_service_session_
             wiced_packet_delete( reply_packet );
         }
         reply_packet = NULL;
+        length_header.value = NULL;
+        range_header.value = NULL;
 
         result = wiced_tcp_receive( tcp_socket, &reply_packet, 1000 ); /* short timeout */
         if (result == WICED_TCPIP_TIMEOUT)
@@ -871,11 +896,14 @@ static wiced_result_t wiced_ota2_service_wget_update(wiced_ota2_service_session_
                 }
             }
 
-            /* if we got data, save it */
-            if ((body != NULL) && (body_length > 0))
+            /* if we got data (not a header), save it */
+            if ((body != NULL) && (body_length > 0) &&
+                !((offset == 0) && (strncasecmp( (char*)body, "HTTP", 4) == 0)) )
             {
                 wiced_result_t  cb_result;
                 uint32_t        percent_done = 0;
+
+
 
                 if ((offset > 0) && (content_length != 0))
                 {
@@ -966,6 +994,10 @@ static wiced_result_t wiced_ota2_service_wget_update(wiced_ota2_service_session_
                             done = WICED_TRUE;
                         }
                     }
+                    else
+                    {
+                        OTA2_LIB_PRINT(session, OTA2_LOG_WARNING, ("wiced_ota2_image_write_data() failed %d\r", result));
+                    }
                 }
             }
         } /* reply packet != NULL */
@@ -1053,6 +1085,7 @@ wiced_result_t wiced_ota2_service_get_the_update(wiced_ota2_service_session_t*se
     }
 
     /* ask the application if it wants to do the update */
+    wiced_ota2_image_header_swap_network_order((wiced_ota2_image_header_t *)session->header_buffer, WICED_OTA2_IMAGE_SWAP_NETWORK_TO_HOST);
     if (wiced_ota2_service_make_callback(session, OTA2_SERVICE_UPDATE_AVAILABLE, (uint32_t)session->header_buffer) != WICED_SUCCESS)
     {
         /* application says do not download, this is not a failure */

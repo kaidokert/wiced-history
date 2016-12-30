@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file Apollo audio application.
@@ -14,12 +37,12 @@
 
 #include "wiced_result.h"
 #include "wiced_rtos.h"
+#include "wiced_log.h"
 #include "wiced_bt_stack.h"
 #include "apollo_bt_service.h"
 #include "apollo_bt_main_service_private.h"
 #include "apollo_config_gatt_server_private.h"
 #include "apollo_bt_nv.h"
-#include "apollo_log.h"
 
 /******************************************************
  *                      Macros
@@ -108,13 +131,13 @@ static void bt_connection_status_callback (wiced_bt_device_address_t bd_addr, ui
     g_bt_service_ctx.connect_state        = is_connected;
     g_bt_service_ctx.connect_state_reason = reason;
 
-    apollo_log_msg( APOLLO_LOG_INFO, "Connection status callback: is_connected=%d, reason=0x%x\n", is_connected, reason );
+    wiced_log_msg( WICED_LOG_INFO, "Connection status callback: is_connected=%d, reason=0x%x\n", is_connected, reason );
 
     if ( is_connected == WICED_FALSE )
     {
         if ( reason == HCI_ERR_CONNECTION_TOUT )
         {
-            apollo_log_msg( APOLLO_LOG_INFO, "Device disconnected(link-loss). Starting Reconnection-Timer...\n");
+            wiced_log_msg( WICED_LOG_INFO, "Device disconnected(link-loss). Starting Reconnection-Timer...\n");
             apollo_bt_service_reconnection_timer_start();
         }
     }
@@ -137,7 +160,7 @@ static void bt_linkloss_timer_handler( wiced_thread_arg_t arg )
         result = wiced_rtos_wait_for_event_flags( &g_bt_service_ctx.timer_events, APOLLO_BT_SERVICE_TIMER_EVENT_ALL, &events, WICED_TRUE, WAIT_FOR_ANY_EVENT, WICED_WAIT_FOREVER );
         if ( result != WICED_SUCCESS )
         {
-            apollo_log_msg(APOLLO_LOG_ERR, "%s: wiced_rtos_wait_for_event_flags() failed !!\n", __func__);
+            wiced_log_msg(WICED_LOG_ERR, "%s: wiced_rtos_wait_for_event_flags() failed !!\n", __func__);
             continue;
         }
 
@@ -165,7 +188,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
     wiced_bt_ble_advert_mode_t      *p_mode;
     wiced_bt_dev_status_t           status  = WICED_BT_SUCCESS;
 
-    apollo_log_msg( APOLLO_LOG_INFO,"bluetooth_management_callback: %x\r\n", event );
+    wiced_log_msg( WICED_LOG_INFO,"bluetooth_management_callback: %x\r\n", event );
 
     switch( event )
     {
@@ -177,6 +200,19 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
             {
                 wiced_result_t            result;
                 wiced_bt_device_address_t bt_local_addr = BT_DEVICE_ADDRESS;
+
+#ifdef DISABLE_BLUETOOTH_LPM
+                if( wiced_bt_dev_get_low_power_mode() )
+                {
+                    result = wiced_bt_dev_set_low_power_mode(WICED_FALSE);
+                    wiced_log_msg( WICED_LOG_INFO,"bluetooth_management_callback setting low_power_mode: %d\r\n", (int)WICED_FALSE );
+                    if( result != WICED_BT_SUCCESS )
+                    {
+                        wiced_log_msg(WICED_LOG_ERR,"bluetooth_management_callback: wiced_bt_dev_set_low_power_mode returns %d\n", (int)result);
+                    }
+                }
+#endif
+
 #ifdef WICED_DCT_INCLUDE_BT_CONFIG
                 platform_dct_bt_config_t* dct_bt_config = NULL;
                 // Read config
@@ -184,14 +220,14 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
                 if ( result != WICED_SUCCESS )
                 {
                     wiced_bt_set_local_bdaddr ( bt_local_addr );
-                    apollo_log_msg(APOLLO_LOG_ERR,"bluetooth_management_callback: wiced_dct_read_lock(DCT_BT_CONFIG_SECTION) failed !!\n");
+                    wiced_log_msg(WICED_LOG_ERR,"bluetooth_management_callback: wiced_dct_read_lock(DCT_BT_CONFIG_SECTION) failed !!\n");
                 }
                 else
                 {
-                    apollo_log_msg(APOLLO_LOG_INFO,"bluetooth_management_callback: WICED DCT BT ADDR [%x:%x:%x:%x:%x:%x] \r\n",
-                                   dct_bt_config->bluetooth_device_address[0], dct_bt_config->bluetooth_device_address[1],
-                                   dct_bt_config->bluetooth_device_address[2], dct_bt_config->bluetooth_device_address[3],
-                                   dct_bt_config->bluetooth_device_address[4], dct_bt_config->bluetooth_device_address[5]);
+                    wiced_log_msg(WICED_LOG_INFO,"bluetooth_management_callback: WICED DCT BT ADDR [%x:%x:%x:%x:%x:%x] \r\n",
+                                  dct_bt_config->bluetooth_device_address[0], dct_bt_config->bluetooth_device_address[1],
+                                  dct_bt_config->bluetooth_device_address[2], dct_bt_config->bluetooth_device_address[3],
+                                  dct_bt_config->bluetooth_device_address[4], dct_bt_config->bluetooth_device_address[5]);
                     wiced_bt_set_local_bdaddr ( dct_bt_config->bluetooth_device_address );
                     wiced_dct_read_unlock( (void*) dct_bt_config, WICED_TRUE );
                 }
@@ -200,11 +236,11 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
 #endif
                 memset(bt_local_addr, 0, sizeof(bt_local_addr));
                 wiced_bt_dev_read_local_addr( bt_local_addr );
-                apollo_log_msg(APOLLO_LOG_INFO, "bluetooth_management_callback: LOCAL BT ADDRESS [%x:%x:%x:%x:%x:%x]\n",
-                               bt_local_addr[0], bt_local_addr[1], bt_local_addr[2], bt_local_addr[3], bt_local_addr[4], bt_local_addr[5] );
+                wiced_log_msg(WICED_LOG_INFO, "bluetooth_management_callback: LOCAL BT ADDRESS [%x:%x:%x:%x:%x:%x]\n",
+                              bt_local_addr[0], bt_local_addr[1], bt_local_addr[2], bt_local_addr[3], bt_local_addr[4], bt_local_addr[5] );
 
                 result = wiced_bt_dev_register_connection_status_change( bt_connection_status_callback );
-                apollo_log_msg(APOLLO_LOG_INFO, "bluetooth_management_callback: wiced_bt_dev_register_connection_status_change() returns %d\n", (int)result);
+                wiced_log_msg(WICED_LOG_INFO, "bluetooth_management_callback: wiced_bt_dev_register_connection_status_change() returns %d\n", (int)result);
 
                 wiced_rtos_set_event_flags( &g_bt_service_ctx.events, APOLLO_BT_SERVICE_EVENT_ENABLED_SUCCESS );
             }
@@ -212,12 +248,12 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
             {
                 wiced_rtos_set_event_flags( &g_bt_service_ctx.events, APOLLO_BT_SERVICE_EVENT_ENABLED_FAILURE );
             }
-            apollo_log_msg( APOLLO_LOG_INFO,"bluetooth_management_callback: Bluetooth enabled (%s)\n", ( ( p_event_data->enabled.status == WICED_BT_SUCCESS ) ? "success":"failure" ) );
+            wiced_log_msg( WICED_LOG_INFO,"bluetooth_management_callback: Bluetooth enabled (%s)\n", ( ( p_event_data->enabled.status == WICED_BT_SUCCESS ) ? "success":"failure" ) );
             break;
 
         case BTM_DISABLED_EVT:
             wiced_rtos_set_event_flags( &g_bt_service_ctx.events, APOLLO_BT_SERVICE_EVENT_DISABLED );
-            apollo_log_msg( APOLLO_LOG_INFO,"bluetooth_management_callback: Bluetooth disabled\n" );
+            wiced_log_msg( WICED_LOG_INFO,"bluetooth_management_callback: Bluetooth disabled\n" );
             break;
 
         case BTM_PAIRING_IO_CAPABILITIES_BLE_REQUEST_EVT:
@@ -235,8 +271,8 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
 
             p_info = &p_event_data->pairing_complete.pairing_complete_info.ble;
 
-            apollo_log_msg( APOLLO_LOG_INFO, "Pairing Complete: %d\n",p_info->reason );
-            apollo_log_msg( APOLLO_LOG_INFO,"bluetooth_management_callback: Pairing complete %i.\n", p_event_data->pairing_complete.pairing_complete_info.ble.status );
+            wiced_log_msg( WICED_LOG_INFO, "Pairing Complete: %d\n",p_info->reason );
+            wiced_log_msg( WICED_LOG_INFO,"bluetooth_management_callback: Pairing complete %i.\n", p_event_data->pairing_complete.pairing_complete_info.ble.status );
 
             break;
 
@@ -244,7 +280,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
 
             wiced_bt_ble_security_grant( p_event_data->security_request.bd_addr, WICED_BT_SUCCESS );
 
-            apollo_log_msg( APOLLO_LOG_INFO, "bluetooth_management_callback: Security request\n" );
+            wiced_log_msg( WICED_LOG_INFO, "bluetooth_management_callback: Security request\n" );
 
             break;
 
@@ -256,7 +292,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
                 apollo_config_advertisement_stopped( );
             }
 
-            apollo_log_msg( APOLLO_LOG_INFO, "bluetooth_management_callback: advertisement State Change=%d\n", *p_mode );
+            wiced_log_msg( WICED_LOG_INFO, "bluetooth_management_callback: advertisement State Change=%d\n", *p_mode );
 
             break;
 
@@ -265,7 +301,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
             p_event_data->pairing_io_capabilities_br_edr_request.local_io_cap   = BTM_IO_CAPABILITIES_NONE;
             p_event_data->pairing_io_capabilities_br_edr_request.auth_req       = BTM_AUTH_SINGLE_PROFILE_GENERAL_BONDING_NO;
 
-            apollo_log_msg( APOLLO_LOG_INFO, "bluetooth_management_callback: IO capabilities BR/EDR request\n" );
+            wiced_log_msg( WICED_LOG_INFO, "bluetooth_management_callback: IO capabilities BR/EDR request\n" );
 
             break;
 
@@ -273,7 +309,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
 
             wiced_bt_dev_confirm_req_reply(WICED_BT_SUCCESS, p_event_data->user_confirmation_request.bd_addr);
 
-            apollo_log_msg(APOLLO_LOG_INFO,"bluetooth_management_callback: User confirmation request\n");
+            wiced_log_msg(WICED_LOG_INFO,"bluetooth_management_callback: User confirmation request\n");
 
             break;
 
@@ -281,7 +317,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
 
             apollo_bt_nv_update_device_link_key( &p_event_data->paired_device_link_keys_update );
 
-            apollo_log_msg(APOLLO_LOG_INFO,"bluetooth_management_callback: Link key update evt\n");
+            wiced_log_msg(WICED_LOG_INFO,"bluetooth_management_callback: Link key update evt\n");
 
             break;
 
@@ -298,7 +334,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
                 status = WICED_BT_ERROR;
             }
 
-            apollo_log_msg(APOLLO_LOG_INFO,"bluetooth_management_callback: Link key request evt\n");
+            wiced_log_msg(WICED_LOG_INFO,"bluetooth_management_callback: Link key request evt\n");
         }
         break;
 
@@ -306,7 +342,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
 
             apollo_bt_nv_update_local_id_keys( &p_event_data->local_identity_keys_update );
 
-            apollo_log_msg(APOLLO_LOG_INFO,"bluetooth_management_callback: Local ID key update evt\n");
+            wiced_log_msg(WICED_LOG_INFO,"bluetooth_management_callback: Local ID key update evt\n");
 
             break;
 
@@ -321,7 +357,7 @@ static wiced_bt_dev_status_t bluetooth_management_callback( wiced_bt_management_
 
             status = WICED_BT_ERROR;
 
-            apollo_log_msg(APOLLO_LOG_INFO,"bluetooth_management_callback: Unhandled Bluetooth Management Event: 0x%x\n", event);
+            wiced_log_msg(WICED_LOG_INFO,"bluetooth_management_callback: Unhandled Bluetooth Management Event: 0x%x\n", event);
 
             break;
     }
@@ -335,24 +371,24 @@ wiced_result_t apollo_bt_service_init( apollo_bt_service_init_params_t *params )
     wiced_result_t result            = WICED_ERROR;
     uint32_t       bt_service_events = 0;
 
-    wiced_action_jump_when_not_true( g_p_bt_service_ctx == NULL, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: already initialized !\n") );
+    wiced_action_jump_when_not_true( g_p_bt_service_ctx == NULL, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: already initialized !\n") );
 
-    wiced_action_jump_when_not_true( params != NULL, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service:  init params is NULL !\n") );
+    wiced_action_jump_when_not_true( params != NULL, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service:  init params is NULL !\n") );
 
     g_p_bt_service_ctx = &g_bt_service_ctx;
 
     result = wiced_rtos_init_event_flags( &g_bt_service_ctx.events );
-    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: init event flags failed !\n") );
+    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: init event flags failed !\n") );
 
     result = wiced_rtos_init_event_flags( &g_bt_service_ctx.timer_events );
-    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: init timer event flags failed !\n") );
+    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: init timer event flags failed !\n") );
 
     g_p_bt_service_ctx->timer_quit  = WICED_FALSE;
     g_p_bt_service_ctx->timer_stop  = WICED_FALSE;
     g_p_bt_service_ctx->num_retries = 0;
     result = wiced_rtos_create_thread_with_stack( &g_bt_service_ctx.timer_thread, BT_SERVICE_TIMER_THREAD_PRIORITY, "apollo_bt_timer", bt_linkloss_timer_handler,
                                                   g_bt_service_ctx.timer_thread_stack, BT_SERVICE_TIMER_THREAD_STACK_SIZE,  &g_bt_service_ctx );
-    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, apollo_log_msg(APOLLO_LOG_ERR, "wiced_rtos_create_thread_with_stack() failed !\n") );
+    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, wiced_log_msg(WICED_LOG_ERR, "wiced_rtos_create_thread_with_stack() failed !\n") );
     g_bt_service_ctx.timer_thread_ptr = &g_bt_service_ctx.timer_thread;
 
 #ifdef WICED_DCT_INCLUDE_BT_CONFIG
@@ -363,15 +399,15 @@ wiced_result_t apollo_bt_service_init( apollo_bt_service_init_params_t *params )
         result = wiced_dct_read_lock( (void**) &dct_bt_config, WICED_TRUE, DCT_BT_CONFIG_SECTION, 0, sizeof(platform_dct_bt_config_t) );
         if ( result != WICED_SUCCESS )
         {
-            apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: wiced_dct_read_lock(DCT_BT_CONFIG_SECTION) failed !!\n");
+            wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: wiced_dct_read_lock(DCT_BT_CONFIG_SECTION) failed !!\n");
         }
         else
         {
-            apollo_log_msg(APOLLO_LOG_INFO,"Apollo BT service: WICED DCT BT NAME [%s]\n", dct_bt_config->bluetooth_device_name);
+            wiced_log_msg(WICED_LOG_INFO,"Apollo BT service: WICED DCT BT NAME [%s]\n", dct_bt_config->bluetooth_device_name);
             strlcpy((char*)g_bt_service_ctx.bluetooth_device_name, (char*)dct_bt_config->bluetooth_device_name, sizeof(g_bt_service_ctx.bluetooth_device_name));
             wiced_bt_cfg_settings.device_name = g_bt_service_ctx.bluetooth_device_name;
-            apollo_log_msg(APOLLO_LOG_INFO,"Apollo BT service: WICED DCT BT DEVICE CLASS [%02x %02x %02x]\n", dct_bt_config->bluetooth_device_class[0],
-                           dct_bt_config->bluetooth_device_class[1], dct_bt_config->bluetooth_device_class[2]);
+            wiced_log_msg(WICED_LOG_INFO,"Apollo BT service: WICED DCT BT DEVICE CLASS [%02x %02x %02x]\n", dct_bt_config->bluetooth_device_class[0],
+                          dct_bt_config->bluetooth_device_class[1], dct_bt_config->bluetooth_device_class[2]);
             memcpy( wiced_bt_cfg_settings.device_class, dct_bt_config->bluetooth_device_class, sizeof(dct_bt_config->bluetooth_device_class));
             wiced_dct_read_unlock( (void*) dct_bt_config, WICED_TRUE );
         }
@@ -379,13 +415,13 @@ wiced_result_t apollo_bt_service_init( apollo_bt_service_init_params_t *params )
 #endif
 
     result = apollo_bt_nv_init( params->app_dct_offset );
-    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, apollo_log_msg( APOLLO_LOG_ERR, "wiced_bt_stack_init: apollo_bt_nv_init() failed\n" ) );
+    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, wiced_log_msg( WICED_LOG_ERR, "wiced_bt_stack_init: apollo_bt_nv_init() failed\n" ) );
 
     result = wiced_bt_stack_init( bluetooth_management_callback, &wiced_bt_cfg_settings, wiced_bt_cfg_buf_pools );
-    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, apollo_log_msg( APOLLO_LOG_ERR, "Apollo BT service: wiced_bt_stack_init() failed !\n" ) );
+    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, wiced_log_msg( WICED_LOG_ERR, "Apollo BT service: wiced_bt_stack_init() failed !\n" ) );
 
     result = wiced_rtos_wait_for_event_flags( &g_bt_service_ctx.events, APOLLO_BT_SERVICE_EVENT_ALL, &bt_service_events, WICED_TRUE, WAIT_FOR_ANY_EVENT, BT_DEVICE_ENABLED_TIMEOUT_MSECS );
-    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: wait for event flags failed with %d !\n", result) );
+    wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: wait for event flags failed with %d !\n", result) );
 
     if ( bt_service_events & APOLLO_BT_SERVICE_EVENT_ENABLED_SUCCESS )
     {
@@ -405,7 +441,7 @@ wiced_result_t apollo_bt_service_deinit( void )
 {
     wiced_result_t result = WICED_ERROR;
 
-    wiced_action_jump_when_not_true( g_p_bt_service_ctx != NULL, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: not yet initialized !\n") );
+    wiced_action_jump_when_not_true( g_p_bt_service_ctx != NULL, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: not yet initialized !\n") );
 
     if ( g_p_bt_service_ctx->timer_thread_ptr != NULL )
     {
@@ -449,7 +485,7 @@ wiced_result_t apollo_bt_service_reconnection_timer_start(void)
 {
     wiced_result_t result = WICED_ERROR;
 
-    wiced_action_jump_when_not_true( g_p_bt_service_ctx != NULL, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: not yet initialized !\n") );
+    wiced_action_jump_when_not_true( g_p_bt_service_ctx != NULL, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: not yet initialized !\n") );
 
     g_p_bt_service_ctx->timer_stop  = WICED_FALSE;
     g_p_bt_service_ctx->num_retries = 0;
@@ -464,7 +500,7 @@ wiced_result_t apollo_bt_service_reconnection_timer_stop(void)
 {
     wiced_result_t result = WICED_ERROR;
 
-    wiced_action_jump_when_not_true( g_p_bt_service_ctx != NULL, _exit, apollo_log_msg(APOLLO_LOG_ERR,"Apollo BT service: not yet initialized !\n") );
+    wiced_action_jump_when_not_true( g_p_bt_service_ctx != NULL, _exit, wiced_log_msg(WICED_LOG_ERR,"Apollo BT service: not yet initialized !\n") );
 
     g_p_bt_service_ctx->timer_stop  = WICED_TRUE;
 

@@ -184,6 +184,11 @@ int    statfs(FAR const char *path, FAR struct statfs *buf);
 FAR char *tmpnam(FAR char *s);
 FAR char *tempnam(FAR const char *dir, FAR const char *pfx);
 
+#define fseeko(s, o, w) fseek(s, o, w)
+#define ftello(s) ftell(s)
+
+int remove (FAR const char * __filename);
+
 #undef EXTERN
 #if defined(__cplusplus)
 }

@@ -346,6 +346,16 @@ FAR struct mtd_dev_s *at24c_initialize(FAR struct i2c_dev_s *dev);
 FAR struct mtd_dev_s *at25_initialize(FAR struct spi_dev_s *dev);
 
 /****************************************************************************
+ * Name: mxic_initialize
+ *
+ * Description:
+ *   Initializes the driver for SPI-based MX25L6433F (64Mbit) flash.
+ *
+ ****************************************************************************/
+
+FAR struct mtd_dev_s *mxic_initialize(FAR struct spi_dev_s *dev);
+
+/****************************************************************************
  * Name: m25p_initialize
  *
  * Description:

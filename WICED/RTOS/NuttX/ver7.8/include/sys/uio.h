@@ -46,13 +46,14 @@ struct iovec
   size_t    iov_len;
 };
 
+#define UIO_MAXIOV      8
+
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
-
-#if 0 /* Not implemented */
+#if 0
 ssize_t readv(int, const struct iovec *, int);
-ssize_t writev(int, const struct iovec *, int);
 #endif
+ssize_t writev(int, const struct iovec *, int);
 
 #endif /* __INCLUDE_SYS_UIO_H */

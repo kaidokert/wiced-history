@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/devif/devif_poll.c
  *
- *   Copyright (C) 2007-2010, 2012, 2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2010, 2012, 2014, 2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@
 
 #include <debug.h>
 
+#include <nuttx/clock.h>
 #include <nuttx/net/netconfig.h>
 #include <nuttx/net/netdev.h>
 
@@ -56,7 +57,7 @@
 #include "igmp/igmp.h"
 
 /****************************************************************************
- * Private Data
+ * Public Data
  ****************************************************************************/
 
 /****************************************************************************
@@ -258,12 +259,13 @@ static inline int devif_poll_tcp_connections(FAR struct net_driver_s *dev,
 
 #ifdef CONFIG_NET_TCP
 static inline int devif_poll_tcp_timer(FAR struct net_driver_s *dev,
-                                       devif_poll_callback_t callback, int hsec)
+                                       devif_poll_callback_t callback,
+                                       int hsec)
 {
   FAR struct tcp_conn_s *conn  = NULL;
   int bstop = 0;
 
-  /* Traverse all of the active TCP connections and perform the poll action */
+  /* Traverse all of the active TCP connections and perform the poll action. */
 
   while (!bstop && (conn = tcp_nextconn(conn)))
     {
@@ -290,7 +292,7 @@ static inline int devif_poll_tcp_timer(FAR struct net_driver_s *dev,
  * Function: devif_poll
  *
  * Description:
- *   This function will traverse each active uIP connection structure and
+ *   This function will traverse each active network connection structure and
  *   will perform network polling operations. devif_poll() may be called
  *   asynchronously with the network driver can accept another outgoing
  *   packet.
@@ -301,7 +303,7 @@ static inline int devif_poll_tcp_timer(FAR struct net_driver_s *dev,
  *   should do only if it cannot accept further write data).
  *
  *   When the callback function is called, there may be an outbound packet
- *   waiting for service in the uIP packet buffer, and if so the d_len field
+ *   waiting for service in the device packet buffer, and if so the d_len field
  *   is set to a value larger than zero. The device driver should then send
  *   out the packet.
  *
@@ -394,7 +396,7 @@ int devif_poll(FAR struct net_driver_s *dev, devif_poll_callback_t callback)
  * Function: devif_timer
  *
  * Description:
- *   These function will traverse each active uIP connection structure and
+ *   These function will traverse each active network connection structure and
  *   perform network timer operations. The Ethernet driver MUST implement
  *   logic to periodically call devif_timer().
  *
@@ -404,7 +406,7 @@ int devif_poll(FAR struct net_driver_s *dev, devif_poll_callback_t callback)
  *   should do only if it cannot accept further write data).
  *
  *   When the callback function is called, there may be an outbound packet
- *   waiting for service in the uIP packet buffer, and if so the d_len field
+ *   waiting for service in the device packet buffer, and if so the d_len field
  *   is set to a value larger than zero. The device driver should then send
  *   out the packet.
  *
@@ -414,14 +416,40 @@ int devif_poll(FAR struct net_driver_s *dev, devif_poll_callback_t callback)
  *
  ****************************************************************************/
 
-int devif_timer(FAR struct net_driver_s *dev, devif_poll_callback_t callback,
-                int hsec)
+int devif_timer(FAR struct net_driver_s *dev, devif_poll_callback_t callback)
 {
+  systime_t now;
+  systime_t elapsed;
   int bstop = false;
 
-  /* Increment the timer used by the IP reassembly logic */
+  /* Get the elapsed time since the last poll in units of half seconds
+   * (truncating).
+   */
+
+  now     = clock_systimer();
+  elapsed = now - dev->d_polltime;
+
+  /* Process time-related events only when more than one half second elapses. */
+
+  if (elapsed >= TICK_PER_HSEC)
+    {
+      /* Calculate the elpased time in units of half seconds (truncating to
+       * number of whole half seconds).
+       */
+
+      int hsec = (int)(elapsed / TICK_PER_HSEC);
+
+      /* Update the current poll time (truncating to the last half second
+       * boundary to avoid error build-up).
+       */
+
+      dev->d_polltime += (TICK_PER_HSEC * (systime_t)hsec);
+
+      /* Perform periodic activitives that depend on hsec > 0 */
 
 #if defined(CONFIG_NET_TCP_REASSEMBLY) && defined(CONFIG_NET_IPv4)
+  /* Increment the timer used by the IP reassembly logic */
+
   if (g_reassembly_timer != 0 &&
       g_reassembly_timer < CONFIG_NET_TCP_REASS_MAXAGE)
     {
@@ -430,81 +458,27 @@ int devif_timer(FAR struct net_driver_s *dev, devif_poll_callback_t callback,
 #endif
 
 #ifdef CONFIG_NET_IPv6
-  /* Perform ageing on the entries in the Neighbor Table */
+      /* Perform aging on the entries in the Neighbor Table */
 
-  neighbor_periodic();
+       neighbor_periodic(hsec);
 #endif
 
-  /* Traverse all of the active packet connections and perform the poll
-   * action.
-   */
-
-#ifdef CONFIG_NET_ARP_SEND
-  /* Check for pending ARP requests */
-
-  bstop = arp_poll(dev, callback);
-  if (!bstop)
-#endif
-#ifdef CONFIG_NET_PKT
-    {
-      /* Check for pending packet socket transfer */
-
-      bstop = devif_poll_pkt_connections(dev, callback);
-    }
-
-  if (!bstop)
-#endif
-#ifdef CONFIG_NET_IGMP
-    {
-      /* Check for pending IGMP messages */
-
-      bstop = devif_poll_igmp(dev, callback);
-    }
-
-  if (!bstop)
-#endif
 #ifdef CONFIG_NET_TCP
-    {
       /* Traverse all of the active TCP connections and perform the
        * timer action.
        */
 
       bstop = devif_poll_tcp_timer(dev, callback, hsec);
+#endif
     }
 
-  if (!bstop)
-#endif
-#ifdef CONFIG_NET_UDP
-   {
-      /* Traverse all of the allocated UDP connections and perform
-       * the timer action.
+  /* If possible, continue with a normal poll checking for pending
+   * network driver actions.
        */
 
-      bstop = devif_poll_udp_connections(dev, callback);
-    }
-
   if (!bstop)
-#endif
-#if defined(CONFIG_NET_ICMP) && defined(CONFIG_NET_ICMP_PING)
     {
-      /* Traverse all of the tasks waiting to send an ICMP ECHO request. */
-
-      bstop = devif_poll_icmp(dev, callback);
-    }
-
-  if (!bstop)
-#endif
-#if defined(CONFIG_NET_ICMPv6) && defined(CONFIG_NET_ICMPv6_PING)
-    {
-      /* Traverse all of the tasks waiting to send an ICMP ECHO request. */
-
-      bstop = devif_poll_icmpv6(dev, callback);
-    }
-
-  if (!bstop)
-#endif
-    {
-      /* Nothing to do */
+      bstop = devif_poll(dev, callback);
     }
 
   return bstop;

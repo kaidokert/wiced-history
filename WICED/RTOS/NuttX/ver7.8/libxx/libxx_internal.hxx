@@ -42,6 +42,10 @@
 
 #include <nuttx/config.h>
 
+#include <nuttx/compiler.h>
+#include <sys/types.h>
+#include <stdlib.h>
+
 //***************************************************************************
 // Definitions
 //***************************************************************************
@@ -60,7 +64,7 @@
 #  define lib_realloc(p,s) kmm_realloc(p,s)
 #  define lib_free(p)      kmm_free(p)
 #else
-#  include <cstdlib>
+// #  include <cstdlib>
 #  define lib_malloc(s)    malloc(s)
 #  define lib_zalloc(s)    zalloc(s)
 #  define lib_realloc(p,s) realloc(p,s)

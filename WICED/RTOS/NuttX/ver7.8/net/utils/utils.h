@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/utils/utils.h
  *
- *   Copyright (C) 2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2014-2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,15 +41,21 @@
  ****************************************************************************/
 
 #include <nuttx/config.h>
+#include <nuttx/net/net.h>
 #include <nuttx/net/ip.h>
-
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
 
 /****************************************************************************
  * Public Types
  ****************************************************************************/
+
+/* These values control the behavior of net_timeval2desc */
+
+enum tv2ds_remainder_e
+{
+  TV2DS_TRUNC = 0, /* Truncate microsecond remainder */
+  TV2DS_ROUND,     /* Round to the nearest full decisecond */
+  TV2DS_CEIL       /* Force to next larger full decisecond */
+};
 
 /****************************************************************************
  * Public Data
@@ -128,7 +134,8 @@ unsigned int net_dsec2tick(int dsec);
  *   save new timeout values.
  *
  * Parameters:
- *   tv   The struct timeval to convert
+ *   tv        - The struct timeval to convert
+ *   remainder - Determines how to handler the microsecond remainder
  *
  * Returned Value:
  *   The converted value
@@ -137,7 +144,36 @@ unsigned int net_dsec2tick(int dsec);
  *
  ****************************************************************************/
 
-unsigned int net_timeval2dsec(FAR struct timeval *tv);
+unsigned int net_timeval2dsec(FAR struct timeval *tv,
+                              enum tv2ds_remainder_e remainder);
+
+/****************************************************************************
+ * Name: net_ipv6_mask2pref
+ *
+ * Description:
+ *   Convert a 128-bit netmask to a prefix length.  The Nuttx IPv6
+ *   networking uses 128-bit network masks internally.  This function
+ *   converts the IPv6 netmask to a prefix length.
+ *
+ *   The prefix length is the number of MS '1' bits on in the netmask.
+ *   This, of course, assumes that all MS bits are '1' and all LS bits are
+ *   '0' with no intermixed 1's and 0's.  This function searches from the MS
+ *   bit until the first '0' is found (this does not necessary mean that
+ *   there might not be additional '1' bits following the firs '0', but that
+ *   will be a malformed netmask.
+ *
+ * Parameters:
+ *   mask   Points to an IPv6 netmask in the form of uint16_t[8]
+ *
+ * Return:
+ *   The prefix length, range 0-128 on success;  This function will not
+ *   fail.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_IPv6
+uint8_t net_ipv6_mask2pref(FAR const uint16_t *mask);
+#endif
 
 /****************************************************************************
  * Function: net_ipv6_pref2mask

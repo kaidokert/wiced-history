@@ -45,6 +45,7 @@
 #include <sys/types.h>
 #include <semaphore.h>
 #include <net/if.h>
+#include <net/route/route.h>
 
 #include <nuttx/net/ip.h>
 
@@ -56,8 +57,8 @@
 
 /* Allocate a new ICMPv6 data callback */
 
-#define icmpv6_callback_alloc()  devif_callback_alloc(&g_icmpv6_conn.list)
-#define icmpv6_callback_free(cb) devif_callback_free(cb, &g_icmpv6_conn.list)
+#define icmpv6_callback_alloc(dev)   devif_callback_alloc(dev, &(dev)->d_conncb)
+#define icmpv6_callback_free(dev,cb) devif_dev_callback_free(dev, cb)
 
 /****************************************************************************
  * Public Type Definitions
@@ -92,7 +93,7 @@ struct icmpv6_notify_s
 
 struct icmpv6_rnotify_s
 {
-#ifdef CONFIG_NETDEV_MULTINIC
+#ifdef CONFIG_NET_MULTILINK
   FAR struct icmpv6_rnotify_s *rn_flink; /* Supports singly linked list */
   char rn_ifname[IFNAMSIZ];             /* Device name */
 #endif
@@ -111,12 +112,6 @@ extern "C"
 {
 #else
 #  define EXTERN extern
-#endif
-
-#if defined(CONFIG_NET_ICMPv6_PING) || defined(CONFIG_NET_ICMPv6_NEIGHBOR)
-/* This is the singleton "connection" structure for TX polls and echo replies */
-
-EXTERN struct icmpv6_conn_s g_icmpv6_conn;
 #endif
 
 /****************************************************************************

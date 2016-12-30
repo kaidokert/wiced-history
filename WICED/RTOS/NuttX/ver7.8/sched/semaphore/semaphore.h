@@ -1,7 +1,7 @@
 /****************************************************************************
  * sched/semaphore/semaphore.h
  *
- *   Copyright (C) 2007, 2009-2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007, 2009-2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,18 +50,6 @@
 #include <queue.h>
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Public Type Declarations
- ****************************************************************************/
-
-/****************************************************************************
- * Public Variables
- ****************************************************************************/
-
-/****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
 
@@ -81,7 +69,13 @@ void sem_initialize(void);
 #  define sem_initialize()
 #endif
 
+/* Wake up a thread that is waiting on semaphore */
+
 void sem_waitirq(FAR struct tcb_s *wtcb, int errcode);
+
+/* Handle semaphore timer expiration */
+
+void sem_timeout(int argc, uint32_t pid);
 
 /* Recover semaphore resources with a task or thread is destroyed  */
 

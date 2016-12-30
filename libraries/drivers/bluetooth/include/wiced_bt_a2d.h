@@ -17,6 +17,18 @@
 
 #include "wiced_bt_sdp.h"
 
+/**
+ *
+ * @defgroup    wicedbt_av_a2d_helper      A2DP Helper Functions
+ * @ingroup     wicedbt_av_helper
+ *
+ * @addtogroup  wicedbt_av_a2d_helper        A2DP Profile Helper Functions
+ * @ingroup     wicedbt_av_helper
+ *
+ * Advanced Audio Distribution Profile
+ *
+ * @{
+ */
 /*****************************************************************************
 **  constants
 *****************************************************************************/
@@ -103,14 +115,6 @@ typedef uint8_t wiced_bt_a2d_status_t;
 **  external function declarations
 *****************************************************************************/
 
-/**
- * @addtogroup  wicedbt_a2dp        Advanced Audio (A2DP)
- * @ingroup     wicedbt_av
- *
- * Advanced Audio Distribution Profile
- *
- * @{
- */
 
 #ifdef __cplusplus
 extern "C"

@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -424,6 +447,7 @@ char* wiced_ether_ntoa( const uint8_t *ea, char *buf, uint8_t buf_len )
  *
 * @return    pointer to the found string if search successful, otherwise NULL
  */
+#ifndef WAC_AIRPLAY_NUTTX
 char* strnstr(const char *s, uint16_t s_len, const char *substr, uint16_t substr_len)
 {
     for (; s_len >= substr_len; s++, s_len--)
@@ -459,6 +483,66 @@ char* strncasestr(const char *s, uint16_t s_len, const char *substr, uint16_t su
     }
 
     return NULL;
+}
+#endif /* WAC_AIRPLAY_NUTTX */
+
+/*
+ ******************************************************************************
+ * Translate string in hex format E.g. "0xfffffffffffffaa" or "ffffedfdaa" to equivalent binary format
+ *
+ * @param     ascii_buffer                String with hex value.
+ * @param     buffer                        Write the hex value represented in the string into this buffer in binary format.
+ *                                                   Note the value on the far right of the string ('aa') will end up in the lower byte of the buffer (buffer[0]).
+ * @param     buffer_length              Max length of the buffer.
+ *
+* @return    Number of uint8_t filled out in buffer. On error, returns 0.
+ */
+uint32_t wiced_ascii_to_hex( const char *ascii_buffer, uint8_t *buffer, uint32_t buffer_length )
+{
+    /* define start and end positions of input pointer */
+    const char *in_start = &ascii_buffer[strlen(ascii_buffer) - 1];
+    const char *in_end   = ascii_buffer;
+    /* define start and end (via tracking bytes written) of output buffer */
+    uint32_t   out_chars = 0;
+
+    /* adjust end input if needed for '0x' */
+    if ( strlen(ascii_buffer) > 2 && strncmp( ascii_buffer, "0x", strlen("0x") ) == 0 )
+    {
+        in_end += 2;
+    }
+
+    /* while more input and more output */
+    while ( in_start >= in_end && out_chars < buffer_length )
+    {
+        /* translate input chars to output byte */
+        {
+            char tmp[3] = { 0 };
+            char *end   = NULL;
+            tmp[0] = *in_start;
+            in_start--;
+            if ( in_start >= in_end )
+            {
+                /* shift in */
+                tmp[1] = tmp[0];
+                tmp[0] = *in_start;
+                in_start--;
+            }
+            buffer[out_chars++] = (uint8_t)(strtoul( tmp, &end, 16));
+            if ( end == NULL )
+            {
+                return 0;
+            }
+        }
+    }
+
+    /* if input not done and output done, return 0 */
+    if ( in_start >= in_end && out_chars == buffer_length )
+    {
+        return 0;
+    }
+
+    /* return bytes written */
+    return out_chars;
 }
 
 /*

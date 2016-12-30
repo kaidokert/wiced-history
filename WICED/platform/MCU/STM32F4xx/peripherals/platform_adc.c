@@ -1,21 +1,43 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
  *
  */
-#include "stdint.h"
-#include "string.h"
 #include "platform_peripheral.h"
 #include "platform_isr.h"
 #include "platform_isr_interface.h"
+#include "wiced_utilities.h"
 #include "wwd_assert.h"
 
 /******************************************************
@@ -25,6 +47,8 @@
 /******************************************************
  *                    Constants
  ******************************************************/
+
+#define MAX_NUM_CHANNELS    ( 19 )
 
 /******************************************************
  *                   Enumerations
@@ -57,6 +81,10 @@ static const uint16_t adc_sampling_cycle[] =
     [ADC_SampleTime_144Cycles] = 144,
     [ADC_SampleTime_480Cycles] = 480,
 };
+
+/* locally store the sample time for use */
+static uint32_t sample_cycles[MAX_NUM_CHANNELS];
+
 /******************************************************
  *               Function Definitions
  ******************************************************/
@@ -66,7 +94,6 @@ platform_result_t platform_adc_init( const platform_adc_t* adc, uint32_t sample_
     GPIO_InitTypeDef       gpio_init_structure;
     ADC_InitTypeDef        adc_init_structure;
     ADC_CommonInitTypeDef  adc_common_init_structure;
-    uint8_t a;
 
     wiced_assert( "bad argument", ( adc != NULL ) );
 
@@ -102,13 +129,7 @@ platform_result_t platform_adc_init( const platform_adc_t* adc, uint32_t sample_
 
     ADC_Cmd( adc->port, ENABLE );
 
-    /* Find the closest supported sampling time by the MCU */
-    for ( a = 0; ( a < sizeof( adc_sampling_cycle ) / sizeof(uint16_t) ) && adc_sampling_cycle[a] < sample_cycle; a++ )
-    {
-    }
-
-    /* Initialize the ADC channel */
-    ADC_RegularChannelConfig( adc->port, adc->channel, adc->rank, a );
+    sample_cycles[adc->channel] = sample_cycle;
 
     platform_mcu_powersave_enable();
 
@@ -125,8 +146,23 @@ platform_result_t platform_adc_deinit( const platform_adc_t* adc )
 platform_result_t platform_adc_take_sample( const platform_adc_t* adc, uint16_t* output )
 {
     wiced_assert( "bad argument", ( adc != NULL ) && ( output != NULL ) );
+    uint8_t a;
 
     platform_mcu_powersave_disable();
+
+    /* Find the closest supported sampling time by the MCU */
+    for ( a = 0; ( a < ARRAY_SIZE(adc_sampling_cycle) ) && adc_sampling_cycle[a] < sample_cycles[adc->channel]; a++ )
+    {
+    }
+
+    /*
+     * Initialize the ADC channel
+     * This peripheral library is not designed to handle multiple active channels per ADC port.
+     *
+     * Program the Rank 1 slot with desired channel, which limits the number of conversions
+     * to 1 & the ADC conversion takes place only for the desired channel
+     */
+    ADC_RegularChannelConfig( adc->port, adc->channel, 1, a );
 
     /* Start conversion */
     ADC_SoftwareStartConv( adc->port );

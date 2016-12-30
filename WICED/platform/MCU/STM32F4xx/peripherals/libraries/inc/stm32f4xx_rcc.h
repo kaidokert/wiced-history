@@ -928,11 +928,11 @@ void        RCC_LSEModeConfig(uint8_t RCC_Mode);
 void        RCC_DSIClockSourceConfig(uint8_t RCC_ClockSource);
 #endif /*  STM32F469_479xx */
 
-/* Features available only for STM32F446xx/STM32F469_479xx devices */
-#if defined(STM32F446xx) || defined(STM32F469_479xx)
+/* Features available only for STM32F446xx/STM32F469_479xx/STM32F412xG devices */
+#if defined(STM32F446xx) || defined(STM32F469_479xx) || defined(STM32F412xG)
 void        RCC_48MHzClockSourceConfig(uint8_t RCC_ClockSource);
 void        RCC_SDIOClockSourceConfig(uint8_t RCC_ClockSource);
-#endif /* STM32F446xx || STM32F469_479xx */
+#endif /* STM32F446xx || STM32F469_479xx || STM32F412xG */
 
 /* Features available only for STM32F446xx devices */
 #if defined(STM32F446xx)
@@ -941,10 +941,10 @@ void        RCC_SPDIFRXClockSourceConfig(uint8_t RCC_ClockSource);
 void        RCC_CECClockSourceConfig(uint8_t RCC_ClockSource);
 #endif /* STM32F446xx */
 
-/* Features available only for STM32F410xx/STM32F446xx devices */
-#if defined(STM32F410xx) || defined(STM32F446xx)
+/* Features available only for STM32F410xx/STM32F446xx/STM32F412xG devices */
+#if defined(STM32F410xx) || defined(STM32F446xx) || defined(STM32F412xG)
 void        RCC_FMPI2C1ClockSourceConfig(uint32_t RCC_ClockSource);
-#endif /* STM32F410xx || STM32F446xx */
+#endif /* STM32F410xx || STM32F446xx || STM32F412xG */
 
 /* Features available only for STM32F410xx devices */
 #if defined(STM32F410xx)

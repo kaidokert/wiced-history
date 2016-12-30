@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -38,6 +61,9 @@
 #include "spi_flash.h"
 
 #include "wiced_ota2_image.h"
+#include "wiced_dct_common.h"
+
+#include "mini_printf.h"
 
 /* define to verify writes  */
 //#define VERIFY_SFLASH_WRITES    1
@@ -60,12 +86,9 @@
 #define  DEBUG_GET_DECOMP_TIME      1
 #endif
 
-
-
 uint32_t wiced_ota2_image_get_offset( wiced_ota2_image_type_t ota_type );
-static inline wiced_result_t wiced_ota2_read_ota2_header(wiced_ota2_image_type_t ota_type, wiced_ota2_image_header_t* ota2_header);
+static wiced_result_t wiced_ota2_read_ota2_header(wiced_ota2_image_type_t ota_type, wiced_ota2_image_header_t* ota2_header);
 
-#if  !defined(BOOTLOADER)
 
 /******************************************************
  *                     Macros
@@ -96,6 +119,8 @@ char *ota2_image_type_name_string[] =
     "OTA2_IMAGE_TYPE_STAGED"
 };
 
+#if  !defined(BOOTLOADER)
+
 
 /* used by wiced_ota2_safe_write_data_to_sflash() so we don't have to allocate a buffer every time! */
 uint8_t sector_in_ram[SECTOR_SIZE];
@@ -105,6 +130,7 @@ uint8_t component_decomp_ram[SECTOR_SIZE];
  *               Function Declarations
  ******************************************************/
 static void wiced_ota2_print_header_info(wiced_ota2_image_header_t* ota2_header, const char* mssg);
+
 static wiced_result_t wiced_ota2_read_sflash(uint32_t offset, uint8_t* data, uint32_t size);
 
 /******************************************************
@@ -283,7 +309,7 @@ static wiced_result_t wiced_ota2_safe_write_data_to_sflash( uint32_t offset, uin
         current_offset += chunk_size;
     }
 
-    if (deinit_sflash( &sflash_handle ) != WICED_SUCCESS)   /* TODO: leave sflash in a known state */
+    if (deinit_sflash( &sflash_handle ) != WICED_SUCCESS)
     {
         OTA2_WPRINT_INFO(("wiced_ota2_safe_write_data_to_sflash() Failed to deinit SFLASH.\r\n"));
         result = WICED_ERROR;
@@ -369,7 +395,7 @@ static wiced_result_t wiced_ota2_safe_write_data_to_internal_flash( uint32_t off
  *
  *  swap the data for network order before saving
  */
-static inline wiced_result_t wiced_ota2_write_ota2_header(wiced_ota2_image_type_t ota_type, wiced_ota2_image_header_t* ota2_header)
+static wiced_result_t wiced_ota2_write_ota2_header(wiced_ota2_image_type_t ota_type, wiced_ota2_image_header_t* ota2_header)
 {
     wiced_ota2_image_header_t   swapped_ota2_header;
     uint32_t                    base_ota_offset;
@@ -378,7 +404,7 @@ static inline wiced_result_t wiced_ota2_write_ota2_header(wiced_ota2_image_type_
     base_ota_offset = wiced_ota2_image_get_offset(ota_type);
     if ((base_ota_offset == 0) || (ota2_header == NULL))
     {
-        OTA2_WPRINT_INFO(("wiced_ota_read_component_header() Bad args!\r\n"));
+        OTA2_WPRINT_INFO(("wiced_ota2_write_ota2_header() Bad args!\r\n"));
         return WICED_BADARG;
     }
 
@@ -396,7 +422,7 @@ static inline wiced_result_t wiced_ota2_write_ota2_header(wiced_ota2_image_type_
 /* *****************************************************
  *
  */
-static inline wiced_result_t wiced_ota_read_component_header( wiced_ota2_image_type_t ota_type, uint16_t component_index, wiced_ota2_image_component_t* component_header)
+static wiced_result_t wiced_ota_read_component_header( wiced_ota2_image_type_t ota_type, uint16_t component_index, wiced_ota2_image_component_t* component_header)
 {
     uint32_t    base_ota_offset;
     uint32_t    component_header_offset;
@@ -421,7 +447,8 @@ static inline wiced_result_t wiced_ota_read_component_header( wiced_ota2_image_t
 
 static wiced_result_t wiced_ota2_image_copy_uncompressed_component(wiced_ota2_image_type_t ota_type,
                                                                   wiced_ota2_image_header_t* ota2_header,
-                                                                  wiced_ota2_image_component_t* component_header)
+                                                                  wiced_ota2_image_component_t* component_header,
+                                                                  ota2_boot_type_t new_boot_type)
 {
     wiced_result_t  result = WICED_SUCCESS;
 #ifdef CURRENT_APPLICATION_USES_INTERNAL_FLASH
@@ -432,7 +459,7 @@ static wiced_result_t wiced_ota2_image_copy_uncompressed_component(wiced_ota2_im
     uint32_t    src_size;
     uint32_t    dst_offset;
     uint16_t    progress = 0;
-    OTA2_CRC_VAR crc_check;
+    OTA2_CRC_VAR crc_check = OTA2_CRC_INIT_VALUE;
 
     base_ota_offset = wiced_ota2_image_get_offset( ota_type );
     if (base_ota_offset == 0)
@@ -452,14 +479,24 @@ static wiced_result_t wiced_ota2_image_copy_uncompressed_component(wiced_ota2_im
     src_size   = component_header->source_size;
     dst_offset = (OTA2_IMAGE_FLASH_BASE + component_header->destination);
 
+    /* for the DCT, we need to choose the non-current DCT to write to */
+    if ( (component_header->type == WICED_OTA2_IMAGE_COMPONENT_DCT) && (new_boot_type != OTA2_BOOT_NEVER_RUN_BEFORE) )
+    {
+        uint32_t curr_dct;
+        curr_dct = (uint32_t)wiced_dct_get_current_address( DCT_INTERNAL_SECTION );
+        if (curr_dct == (uint32_t)GET_CURRENT_ADDRESS_FAILED)
+        {
+            return WICED_ERROR;
+        }
+        dst_offset = OTA2_IMAGE_FLASH_BASE + (curr_dct == PLATFORM_DCT_COPY1_START_ADDRESS ) ?
+                                                          PLATFORM_DCT_COPY2_START_ADDRESS : PLATFORM_DCT_COPY1_START_ADDRESS;
+    }
+
     pos = 0;
     crc_check = OTA2_CRC_INIT_VALUE;
     while ( pos < src_size )
     {
         chunk_size = ((src_size - pos) > SECTOR_SIZE ) ? SECTOR_SIZE : ( src_size - pos );
-
-        /* todo: get first chunk to hit the end of a sector so all other reads/writes go faster? */
-
         memset(component_decomp_ram, 0x00, chunk_size);
 
         if (wiced_ota2_read_sflash( (unsigned long)(src_offset + pos), component_decomp_ram, chunk_size) != WICED_SUCCESS)
@@ -471,7 +508,69 @@ static wiced_result_t wiced_ota2_image_copy_uncompressed_component(wiced_ota2_im
 
         crc_check = OTA2_CRC_FUNCTION(component_decomp_ram, chunk_size, crc_check);
 
+        /* We need to write the DCT component into the non-current DCT area
+         *    AND set the boot_type, crc32 and write_incomplete while writing the sectors
+         *    AFTER writing all the sectors, clear crc32 and write_incomplete
+         *
+         * Do these changes *after* the crc_check update - this crc_check is for validating the extraction,
+         *    and is not the DCT crc32 value.
+         */
+        if ( (component_header->type == WICED_OTA2_IMAGE_COMPONENT_DCT) && (new_boot_type != OTA2_BOOT_NEVER_RUN_BEFORE) )
+        {
+#if  defined(DCT_BOOTLOADER_CRC_IS_IN_HEADER)
+            /* Change the DCT crc32 - set to 0x00 when writing DCT is finished */
+            if  ( ((uint32_t)pos <= OFFSETOF(platform_dct_data_t, dct_header)) &&
+                  (((uint32_t)pos + chunk_size) >= (OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, crc32))) )
+            {
+                uint32_t offset;
+                /*
+                 * Find the offset to the dct_header.crc32 within the DCT we are about to write and set to 0x0001
+                 * into the structure before we save it.
+                 */
+                offset = (OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, crc32)) - (uint32_t)pos;
+                component_decomp_ram[offset] = 0x01;
+            }
+#else
+            /* Change the DCT crc32 - set to 0x00 when writing DCT is finished */
+            if  ( ((uint32_t)pos <= OFFSETOF(platform_dct_data_t, dct_version)) &&
+                  (((uint32_t)pos + chunk_size) >= (OFFSETOF(platform_dct_data_t, dct_version) + OFFSETOF(platform_dct_version_t, crc32))) )
+            {
+                uint32_t offset;
+                /*
+                 * Find the offset to the dct_header.crc32 within the DCT we are about to write and set to 0x0001
+                 * into the structure before we save it.
+                 */
+                offset = (OFFSETOF(platform_dct_data_t, dct_version) + OFFSETOF(platform_dct_version_t, crc32)) - (uint32_t)pos;
+                component_decomp_ram[offset] = 0x01;
+            }
 
+#endif
+            /* Change the DCT write_incomplete - clear it at the end of DCT writing */
+            if  ( ((uint32_t)pos <= OFFSETOF(platform_dct_data_t, dct_header)) &&
+                  (((uint32_t)pos + chunk_size) >= (OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, write_incomplete))) )
+            {
+                uint32_t offset;
+                /*
+                 * Find the offset to the dct_header.write_incomplete within the DCT we are about to write and set to non-zero
+                 * into the structure before we save it.
+                 */
+                offset = (OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, write_incomplete)) - (uint32_t)pos;
+                component_decomp_ram[offset] = 0x01;
+            }
+
+            /* Change the DCT boot_type */
+            if  ( ((uint32_t)pos <= OFFSETOF(platform_dct_data_t, ota2_config)) &&
+                  (((uint32_t)pos + chunk_size) >= (OFFSETOF(platform_dct_data_t, ota2_config) + OFFSETOF(platform_dct_ota2_config_t, boot_type))) )
+            {
+                uint32_t offset;
+                /*
+                 * Find the offset to the ota2_config.boot_type within the DCT we are about to write and write the new boot type
+                 * into the structure before we save it.
+                 */
+                offset = (OFFSETOF(platform_dct_data_t, ota2_config) + OFFSETOF(platform_dct_ota2_config_t, boot_type)) - (uint32_t)pos;
+                component_decomp_ram[offset] = new_boot_type;
+            }
+        }
 #ifdef CURRENT_APPLICATION_USES_INTERNAL_FLASH
         if (component_header->type == WICED_OTA2_IMAGE_COMPONENT_APP0)
         {
@@ -505,20 +604,74 @@ static wiced_result_t wiced_ota2_image_copy_uncompressed_component(wiced_ota2_im
                 result = WICED_ERROR;
                 goto _no_comp_end;
             }
-
 #ifdef CURRENT_APPLICATION_USES_INTERNAL_FLASH
         }
 #endif
 
-        if ((progress++ % 0x03) == 0)
+        if ((progress++ & 0x03) == 0)
         {
-            OTA2_WPRINT_INFO(("."));
+            mini_printf(".");
         }
 
         pos += chunk_size;
     } /* while pos < src_size */
 
+    /* Now that the DCT is completely written, set it so that it is the valid DCT
+     *    set crc32 and write_incomplete to 0x00
+     */
+    if ( (component_header->type == WICED_OTA2_IMAGE_COMPONENT_DCT) && (new_boot_type != OTA2_BOOT_NEVER_RUN_BEFORE) )
+    {
+        uint32_t        offset;
+        char            write_incomplete = 0;
+        OTA2_CRC_VAR    crc32 = 0x00000000;
+        sflash_handle_t sflash_handle;
+
+        if (init_sflash( &sflash_handle, PLATFORM_SFLASH_PERIPHERAL_ID, SFLASH_WRITE_ALLOWED )!= 0)
+        {
+            OTA2_WPRINT_INFO(("wiced_ota2_safe_write_data_to_sflash() Failed to init SFLASH for writing.\r\n"));
+            result = WICED_ERROR;
+            goto _no_comp_end;
+        }
+
+#if  defined(DCT_BOOTLOADER_CRC_IS_IN_HEADER)
+        /* Change the DCT crc32 - set to 0x00 when writing DCT is finished */
+        offset = (OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, crc32));
+
+        if ( 0 != sflash_write( &sflash_handle, (unsigned long)(dst_offset + offset) , &crc32, sizeof(crc32)) )
+        {
+            result = WICED_ERROR;
+            goto _deint_sflash;
+        }
+#else
+        /* Change the DCT crc32 - set to 0x00 when writing DCT is finished */
+        offset = (OFFSETOF(platform_dct_data_t, dct_version) + OFFSETOF(platform_dct_version_t, crc32));
+
+        if ( 0 != sflash_write( &sflash_handle, (unsigned long)(dst_offset + offset) , &crc32, sizeof(crc32)) )
+        {
+            result = WICED_ERROR;
+            goto _deint_sflash;
+        }
+#endif
+        /* Change the DCT write_incomplete - clear it at the end of DCT writing */
+        offset = (OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, write_incomplete));
+
+        if ( 0 != sflash_write( &sflash_handle, (unsigned long)(dst_offset + offset) , &write_incomplete, sizeof(write_incomplete)) )
+        {
+            result = WICED_ERROR;
+            goto _deint_sflash;
+        }
+
+_deint_sflash:
+        if (deinit_sflash( &sflash_handle ) != WICED_SUCCESS)   /* TODO: leave sflash in a known state */
+        {
+            OTA2_WPRINT_INFO(("wiced_ota2_read_sflash() Failed to deinit SFLASH.\r\n"));
+            result = WICED_ERROR;
+        }
+    }
+
 _no_comp_end:
+
+mini_printf("\r\n");
 
     if (component_header->crc != crc_check)
     {
@@ -575,8 +728,8 @@ wiced_result_t wiced_ota2_image_validate ( wiced_ota2_image_type_t ota_type )
         return WICED_ERROR;
     }
 
-    /* check hardware platform */
-    if (strcmp((char *)ota2_header.platform_name, PLATFORM) != 0)
+    /* check hardware platform - may or may not have APPS_CHIP_REVISION in OTA2 Image header */
+    if (strncmp((char *)ota2_header.platform_name, PLATFORM, strlen(PLATFORM)) != 0)
     {
         OTA2_WPRINT_INFO(("wiced_ota2_image_validate() OTA Image Platform type fail. %s != %s \r\n", ota2_header.platform_name, PLATFORM));
         return WICED_UNSUPPORTED;
@@ -616,13 +769,14 @@ wiced_result_t wiced_ota2_image_validate ( wiced_ota2_image_type_t ota_type )
         case WICED_OTA2_IMAGE_INVALID:
         case WICED_OTA2_IMAGE_DOWNLOAD_FAILED:
         case WICED_OTA2_IMAGE_DOWNLOAD_UNSUPPORTED:
-        case WICED_OTA2_IMAGE_DOWNLOAD_EXTRACTED:
             /* if there is a problem, or we haven't finished loading, don't print the components */
+            OTA2_WPRINT_INFO(("wiced_ota2_image_validate() fail download_status:%d.\r\n", ota2_header.download_status));
             return WICED_ERROR;
             break;
         case WICED_OTA2_IMAGE_VALID:
         case WICED_OTA2_IMAGE_DOWNLOAD_COMPLETE:
         case WICED_OTA2_IMAGE_EXTRACT_ON_NEXT_BOOT:
+        case WICED_OTA2_IMAGE_DOWNLOAD_EXTRACTED:
             break;
     }
 
@@ -701,6 +855,99 @@ wiced_result_t wiced_ota2_image_validate ( wiced_ota2_image_type_t ota_type )
 }
 
 /**
+ * Extract OTA2 extractor (or Apps LUT) from the OTA2 Image to the current area
+ *
+ * NOTE: This is used by the OTA2 Failsafe code
+ *
+ * @param[in]  ota_type     - OTA Image type
+ * @param[in]  component    - OTA Component to extract (ONLY WICED_OTA2_IMAGE_COMPONENT_LUT or WICED_OTA2_IMAGE_COMPONENT_OTA_APP)
+ * @param[out] destination  - address extracted to in FLASH
+ * @param[out] destination  - extracted size
+ *
+ * @return WICED_SUCCESS
+ *         WICED_ERROR      - Bad OTA Image, not fully downloaded
+ *         WICED_BADARG     - NULL pointer passed in or bad size
+ */
+wiced_result_t wiced_ota2_image_extract_uncompressed_component( wiced_ota2_image_type_t ota_type, wiced_ota2_image_component_type_t component,
+                                                                uint32_t* destination, uint32_t* destination_size )
+{
+    int                             index;
+    wiced_ota2_image_header_t       ota2_header;
+    wiced_ota2_image_component_t    component_header;
+    wiced_ota2_image_status_t       status;
+    wiced_result_t                  result = WICED_ERROR;
+
+    /* we only support LUT and OTA_APP */
+    if ((component != WICED_OTA2_IMAGE_COMPONENT_LUT) && (component != WICED_OTA2_IMAGE_COMPONENT_OTA_APP))
+    {
+        OTA2_WPRINT_ERROR(("wiced_ota2_image_extract_uncompressed_component(%s) bad arg!\r\n", ota2_image_type_name_string[ota_type]));
+        return WICED_BADARG;
+    }
+
+    if ((destination == NULL) || (destination_size == NULL))
+    {
+        OTA2_WPRINT_ERROR(("wiced_ota2_image_extract_uncompressed_component(%s) bad arg!\r\n", ota2_image_type_name_string[ota_type]));
+        return WICED_BADARG;
+    }
+
+    *destination = 0;
+    *destination_size = 0;
+
+    /* validate the image */
+    if (wiced_ota2_image_validate(ota_type) != WICED_SUCCESS)
+    {
+        OTA2_WPRINT_ERROR(("wiced_ota2_image_extract_uncompressed_component(%s) validate() failed\r\n", ota2_image_type_name_string[ota_type]));
+        return WICED_BADARG;
+    }
+
+    /* check download status */
+    wiced_ota2_image_get_status ( ota_type, &status );
+    if ( (status != WICED_OTA2_IMAGE_DOWNLOAD_COMPLETE) && (status != WICED_OTA2_IMAGE_EXTRACT_ON_NEXT_BOOT) &&
+         (status != WICED_OTA2_IMAGE_VALID))
+    {
+        return WICED_ERROR;
+    }
+
+     if (wiced_ota2_read_ota2_header(ota_type, &ota2_header) != WICED_SUCCESS)
+     {
+         return WICED_ERROR;
+     }
+
+    /* Extract the component and check CRC */
+
+    /* read the component header(s) and find the right component */
+     for (index = 0; index < ota2_header.component_count; index++)
+     {
+
+        if (wiced_ota_read_component_header( ota_type, index, &component_header) != WICED_SUCCESS)
+        {
+            OTA2_WPRINT_ERROR(("wiced_ota2_extract_uncompressed_component() wiced_ota_read_component_header() failed. \r\n"));
+            return WICED_ERROR;
+        }
+        if (component_header.type == component)
+        {
+            if (component_header.compression != WICED_OTA2_IMAGE_COMPONENT_COMPRESSION_NONE)
+            {
+                OTA2_WPRINT_ERROR(("wiced_ota2_extract_uncompressed_component() component is compressed - fail. \r\n"));
+                return WICED_ERROR;
+            }
+
+            mini_printf("extracting: %s\r\n", component_header.name);
+
+            result = wiced_ota2_image_copy_uncompressed_component( ota_type, &ota2_header, &component_header, OTA2_BOOT_NEVER_RUN_BEFORE);
+            if (result == WICED_SUCCESS)
+            {
+                *destination      = component_header.destination;
+                *destination_size =  component_header.destination_size;
+            }
+            break;
+        }
+     }
+
+    return result;
+}
+
+/**
  * Extract OTA Image
  * NOTE: All information regarding location of data in the system is part of the OTA Image.
  *
@@ -716,6 +963,8 @@ wiced_result_t wiced_ota2_image_extract ( wiced_ota2_image_type_t ota_type )
     wiced_ota2_image_header_t   ota2_header;
     wiced_ota2_image_status_t   status;
     wiced_result_t              result;
+    platform_dct_ota2_config_t  ota2_config;
+    ota2_boot_type_t            starting_boot_type;
 
     /* validate the image */
     if (wiced_ota2_image_validate(ota_type) != WICED_SUCCESS)
@@ -748,6 +997,24 @@ wiced_result_t wiced_ota2_image_extract ( wiced_ota2_image_type_t ota_type )
 
      OTA2_WPRINT_INFO(("\r\n"));
 
+     /* set the boot_type so that if there is a reset or power cycle, we will recover using OTA2 Failsafe */
+     wiced_dct_read_with_copy( &ota2_config, DCT_OTA2_CONFIG_SECTION, 0, sizeof(platform_dct_ota2_config_t) );
+     switch(ota_type)
+     {
+         case WICED_OTA2_IMAGE_TYPE_FACTORY_RESET_APP:
+             ota2_config.boot_type = OTA2_BOOT_FAILSAFE_FACTORY_RESET;
+             break;
+         case WICED_OTA2_IMAGE_TYPE_STAGED:
+             ota2_config.boot_type = OTA2_BOOT_FAILSAFE_UPDATE;
+             break;
+         default:
+             /* we don't extract anything else - return badarg */
+             return WICED_BADARG;
+     }
+     /* keep track of the boot type so we can re-write it after the DCT has been extracted! */
+     starting_boot_type = ota2_config.boot_type;
+     wiced_dct_write( &ota2_config, DCT_OTA2_CONFIG_SECTION, 0, sizeof(platform_dct_ota2_config_t) );
+
     /* Extract the components and check CRCs while doing so - bail out if any one component fails */
      result = WICED_SUCCESS;
     for (index = 0; index < ota2_header.component_count; index++)
@@ -766,7 +1033,7 @@ wiced_result_t wiced_ota2_image_extract ( wiced_ota2_image_type_t ota_type )
 
         wiced_ota2_print_component_info(&component_header);
 
-        OTA2_WPRINT_DEBUG(("extracting %s:", component_header.name));
+        mini_printf("extracting: %s\r\n", component_header.name);
 
 #ifdef  DEBUG_GET_DECOMP_TIME
         wiced_time_get_time( &start_time );
@@ -788,7 +1055,7 @@ wiced_result_t wiced_ota2_image_extract ( wiced_ota2_image_type_t ota_type )
                 result = WICED_ERROR;
                 break;
             case WICED_OTA2_IMAGE_COMPONENT_COMPRESSION_NONE:
-                result = wiced_ota2_image_copy_uncompressed_component( ota_type, &ota2_header, &component_header);
+                result = wiced_ota2_image_copy_uncompressed_component( ota_type, &ota2_header, &component_header, starting_boot_type);
                 break;
             default:
                 OTA2_WPRINT_INFO(("wiced_ota2_extract() UNDEFINED COMPRESSION UNSUPPORTED .\r\n"));
@@ -804,7 +1071,7 @@ wiced_result_t wiced_ota2_image_extract ( wiced_ota2_image_type_t ota_type )
 
     }   /* for component_count */
 
-    /* we always want to leave the Factory Reset Application alone - no touchy-touchy! */
+    /* we always want to leave the Factory Reset Application status alone - no touchy-touchy! */
     if (ota_type != WICED_OTA2_IMAGE_TYPE_FACTORY_RESET_APP)
     {
         wiced_ota2_image_update_staged_status(WICED_OTA2_IMAGE_DOWNLOAD_EXTRACTED);
@@ -873,6 +1140,45 @@ wiced_result_t  wiced_ota2_image_write_data(uint8_t* data, uint32_t offset, uint
     return WICED_SUCCESS;
 }
 
+/** Get the OTA2 application software version from the header
+ *
+ * NOTE: Only updates the major & minor values on WICED_SUCCESS
+ *
+ * @param image_type [in]   : OTA2 Image type to get software app version
+ * @param major [out]   : ptr to store software major version
+ * @param minor [out]   : ptr to store software minor version
+ *
+ * @return  WICED_SUCCESS
+ *          WICED_BADARG
+ *          WICED_ERROR
+ */
+wiced_result_t wiced_ota2_image_get_version(wiced_ota2_image_type_t image_type, uint16_t* major, uint16_t* minor)
+{
+    wiced_ota2_image_header_t   ota2_header;
+
+    if ((major == NULL) || (minor == NULL))
+    {
+        OTA2_WPRINT_INFO(("wiced_ota2_image_get_version() Bad Args!\r\n"));
+        return WICED_BADARG;
+    }
+
+    if (wiced_ota2_image_validate ( image_type ) != WICED_SUCCESS)
+    {
+        OTA2_WPRINT_INFO(("wiced_ota2_image_get_version() wiced_ota2_image_validate() failed!\r\n"));
+        return WICED_ERROR;
+    }
+
+    if (wiced_ota2_read_ota2_header(image_type, &ota2_header) != WICED_SUCCESS)
+    {
+        OTA2_WPRINT_INFO(("wiced_ota2_image_get_version() wiced_ota2_read_ota2_header() failed!\r\n"));
+        return WICED_ERROR;
+    }
+
+    *major = ota2_header.major_version;
+    *minor = ota2_header.minor_version;
+
+    return WICED_SUCCESS;
+}
 /** Update the OTA image header after writing (parts of) the downloaded OTA image to FLASH
  *
  * @param total_bytes_received - number of bytes written to the image
@@ -1023,20 +1329,22 @@ wiced_result_t wiced_ota2_force_factory_reset_on_reboot( void )
 }
 
 /** Get the last boot type
- * NOTE: Also sets boot type to OTA2_BOOT_NORMAL
+ *
  * @param   N/A
  *
  * @return  ota2_boot_type_t
  */
 ota2_boot_type_t wiced_ota2_get_boot_type( void )
 {
+    wiced_result_t      result;
     ota2_boot_type_t boot_type = OTA2_BOOT_NORMAL;
 
     /* Did User cause a Factory Reset ? */
     platform_dct_ota2_config_t  ota2_header;
 
     /* is saved DCT valid ? */
-    if (wiced_dct_ota2_read_saved_copy( &ota2_header, DCT_OTA2_CONFIG_SECTION, 0, sizeof(platform_dct_ota2_config_t)) == WICED_SUCCESS)
+    result = wiced_dct_ota2_read_saved_copy( &ota2_header, DCT_OTA2_CONFIG_SECTION, 0, sizeof(platform_dct_ota2_config_t));
+    if (result == WICED_SUCCESS)
     {
         boot_type = ota2_header.boot_type;
     }
@@ -1115,7 +1423,7 @@ static wiced_result_t wiced_ota2_read_sflash(uint32_t offset, uint8_t* data, uin
  *
  *read the ota2_header and swap values from network order to host order
  */
-static inline wiced_result_t wiced_ota2_read_ota2_header(wiced_ota2_image_type_t ota_type, wiced_ota2_image_header_t* ota2_header)
+static wiced_result_t wiced_ota2_read_ota2_header(wiced_ota2_image_type_t ota_type, wiced_ota2_image_header_t* ota2_header)
 {
     uint32_t    base_ota2_offset;
 
@@ -1156,9 +1464,9 @@ wiced_result_t wiced_ota2_image_get_status ( wiced_ota2_image_type_t ota_type, w
         return WICED_BADARG;
     }
 
-    if (ota_type == WICED_OTA2_IMAGE_TYPE_CURRENT_APP)  // TODO: test crc from LUT
+    if (ota_type == WICED_OTA2_IMAGE_TYPE_CURRENT_APP)
     {
-        OTA2_WPRINT_DEBUG(("wiced_ota2_get_status() Current App - OK for now, TODO: check CRC when added to apps_lut!\r\n"));
+        /* Current App - OK */
         *status = WICED_OTA2_IMAGE_VALID;
         return WICED_SUCCESS;
     }
@@ -1214,9 +1522,6 @@ uint32_t wiced_ota2_image_get_offset( wiced_ota2_image_type_t ota_type )
     {
         case WICED_OTA2_IMAGE_TYPE_FACTORY_RESET_APP:
             ota_offset = OTA2_IMAGE_FACTORY_RESET_AREA_BASE;
-            break;
-        case WICED_OTA2_IMAGE_TYPE_CURRENT_APP:
-            ota_offset = OTA2_IMAGE_CURRENT_AREA_BASE;
             break;
         case WICED_OTA2_IMAGE_TYPE_STAGED:
             ota_offset = OTA2_IMAGE_STAGING_AREA_BASE;

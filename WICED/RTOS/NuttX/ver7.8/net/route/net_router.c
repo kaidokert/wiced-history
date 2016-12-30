@@ -43,6 +43,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include <netinet/in.h>
+
 #include <nuttx/net/ip.h>
 
 #include "devif/devif.h"
@@ -127,26 +129,22 @@ static int net_ipv4_match(FAR struct net_route_s *route, FAR void *arg)
  ****************************************************************************/
 
 #ifdef CONFIG_NET_IPv6
-static int net_ipv6_match(FAR struct net_route_s *route, FAR void *arg)
+static int net_ipv6_match(FAR struct net_route_ipv6_s *route, FAR void *arg)
 {
-#if 1
-#  warning Missing logic
-#else
-  FAR struct route_ipv4_match_s *match = (FAR struct route_ipv4_match_s *)arg;
+  FAR struct route_ipv6_match_s *match = (FAR struct route_ipv6_match_s *)arg;
 
   /* To match, the masked target addresses must be the same.  In the event
    * of multiple matches, only the first is returned.  There is not (yet) any
    * concept for the precedence of networks.
    */
 
-  if (net_ipv6ddr_maskcmp(route->target, match->target, route->netmask))
+  if (net_ipv6addr_maskcmp(route->target, match->target, route->netmask))
     {
       /* They match.. Copy the router address */
 
       net_ipv6addr_copy(match->router, route->router);
       return 1;
     }
-#endif
 
   return 0;
 }
@@ -181,7 +179,7 @@ int net_ipv4_router(in_addr_t target, FAR in_addr_t *router)
 
   /* Do not route the special broadcast IP address */
 
-  if (net_ipv4addr_cmp(target, g_ipv4_alloneaddr))
+  if (net_ipv4addr_cmp(target, INADDR_BROADCAST))
     {
       return -ENOENT;
     }
@@ -253,7 +251,7 @@ int net_ipv6_router(const net_ipv6addr_t target, net_ipv6addr_t router)
    * address
    */
 
-  ret = net_foreachroute(net_ipv6_match, &match);
+  ret = net_foreachroute_ipv6(net_ipv6_match, &match);
   if (ret > 0)
     {
       /* We found a route.  Return the router address. */

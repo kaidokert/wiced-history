@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -52,12 +75,12 @@ extern "C" {
 
 typedef enum
 {
-    WICED_FILESYSTEM_OPEN_FOR_READ,      /** Specifies read access to the object. Data can be read from the file - equivalent to "r" or "rb" */
-    WICED_FILESYSTEM_OPEN_FOR_WRITE,     /** Specifies read/write access to the object. Data can be written to the file - equivalent to "r+" or "rb+" or "r+b" */
-    WICED_FILESYSTEM_OPEN_WRITE_CREATE,  /** Opens for read/write access, creates it if it doesn't exist */
-    WICED_FILESYSTEM_OPEN_ZERO_LENGTH,   /** Opens for read/write access, Truncates file to zero length if it exists, or creates it if it doesn't - equivalent to "w+", "wb+" or "w+b" */
-    WICED_FILESYSTEM_OPEN_APPEND,        /** Opens for read/write access, places the current location at the end of the file ready for appending - equivalent to "a", "ab" */
-    WICED_FILESYSTEM_OPEN_APPEND_CREATE, /** Opens for read/write access, creates it if it doesn't exist, and places the current location at the end of the file ready for appending  - equivalent to "a+", "ab+" or "a+b" */
+    WICED_FILESYSTEM_OPEN_FOR_READ,      /**< Specifies read access to the object. Data can be read from the file - equivalent to "r" or "rb" */
+    WICED_FILESYSTEM_OPEN_FOR_WRITE,     /**< Specifies read/write access to the object. Data can be written to the file - equivalent to "r+" or "rb+" or "r+b" */
+    WICED_FILESYSTEM_OPEN_WRITE_CREATE,  /**< Opens for read/write access, creates it if it doesn't exist */
+    WICED_FILESYSTEM_OPEN_ZERO_LENGTH,   /**< Opens for read/write access, Truncates file to zero length if it exists, or creates it if it doesn't - equivalent to "w+", "wb+" or "w+b" */
+    WICED_FILESYSTEM_OPEN_APPEND,        /**< Opens for read/write access, places the current location at the end of the file ready for appending - equivalent to "a", "ab" */
+    WICED_FILESYSTEM_OPEN_APPEND_CREATE, /**< Opens for read/write access, creates it if it doesn't exist, and places the current location at the end of the file ready for appending  - equivalent to "a+", "ab+" or "a+b" */
 } wiced_filesystem_open_mode_t;
 
 typedef enum
@@ -77,9 +100,9 @@ typedef enum
 
 typedef enum
 {
-    WICED_FILESYSTEM_SEEK_SET = SEEK_SET,      /* Offset from start of file */
-    WICED_FILESYSTEM_SEEK_CUR = SEEK_CUR,      /* Offset from current position in file */
-    WICED_FILESYSTEM_SEEK_END = SEEK_END,      /* Offset from end of file */
+    WICED_FILESYSTEM_SEEK_SET = SEEK_SET,      /**< Offset from start of file */
+    WICED_FILESYSTEM_SEEK_CUR = SEEK_CUR,      /**< Offset from current position in file */
+    WICED_FILESYSTEM_SEEK_END = SEEK_END,      /**< Offset from end of file */
 } wiced_filesystem_seek_type_t;
 
 
@@ -91,7 +114,7 @@ typedef enum
     WICED_FILESYSTEM_ATTRIBUTE_VOLUME     = 0x08,
     WICED_FILESYSTEM_ATTRIBUTE_DIRECTORY  = 0x10,
     WICED_FILESYSTEM_ATTRIBUTE_ARCHIVE    = 0x20,
-}wiced_filesystem_attribute_type_t;
+} wiced_filesystem_attribute_type_t;
 
 
 typedef enum
@@ -208,8 +231,10 @@ wiced_result_t wiced_filesystem_init ( void );
  *
  * This assumes that the device is ready to read/write immediately.
  *
- * @param[in]  device        - physical media to init
+ * @param[in]  device        - Physical media to init.
+ * @param[in]  fs_type       - Type of filesystem to be mounted.
  * @param[out] fs_handle_out - Receives the filesystem handle.
+ * @param[in]  mounted_name  - Name of the mounted filesystem.
  *
  * @return WICED_SUCCESS on success
  */
@@ -219,7 +244,7 @@ wiced_result_t wiced_filesystem_mount ( wiced_block_device_t* device, wiced_file
 /**
  * Unmount the filesystem
  *
- * @param[in]  fs_handle   - the filesystem to unmount
+ * @param[in]  fs_handle   - The filesystem to unmount
  *
  * @return WICED_SUCCESS on success
  */
@@ -229,7 +254,7 @@ wiced_result_t wiced_filesystem_unmount ( wiced_filesystem_t* fs_handle );
 /**
  * Get the filesystem handle by name
  *
- * @param[in]  mounted_name   - the mounted name for search corresponding fs_handle
+ * @param[in]  mounted_name   - The mounted name for search corresponding fs_handle
  *
  * @return fs_handle on success, NULL on failure
  */
@@ -264,7 +289,7 @@ wiced_result_t wiced_filesystem_file_open ( wiced_filesystem_t* fs_handle, wiced
 /**
  * Seek to a location within a file
  *
- * This is similar to the fseek() in ISO C.
+ * @note This is similar to the fseek() in ISO C.
  *
  * @param[in] file_handle - The file handle on which to perform the seek.
  *                          Must have been previously opened with wiced_filesystem_fopen.
@@ -281,7 +306,7 @@ wiced_result_t wiced_filesystem_file_seek ( wiced_file_t* file_handle, int64_t o
 /**
  * Returns the current location within a file
  *
- * This is similar to the ftell() in ISO C.
+ * @note This is similar to the ftell() in ISO C.
  *
  * @param[in]  file_handle - The file handle to be examined
  * @param[out] location    - Receives the current location within the file
@@ -294,11 +319,11 @@ wiced_result_t wiced_filesystem_file_tell ( wiced_file_t* file_handle, uint64_t*
 /**
  * Reads data from a file into a memory buffer
  *
- * @param[in] file_handle          - the file handle to read from
- * @param[out] data                - A pointer to the memory buffer that will
- *                                   receive the data that is read
- * @param[in] bytes_to_read        - the number of bytes to read
- * @param[out] returned_item_count - the number of items successfully read.
+ * @param[in] file_handle           - The file handle to read from
+ * @param[out] data                 - A pointer to the memory buffer that will
+ *                                    receive the data that is read
+ * @param[in] bytes_to_read         - The number of bytes to read
+ * @param[out] returned_bytes_count - The number of bytes successfully read.
  *
  * @return WICED_SUCCESS  on success
  */
@@ -308,11 +333,11 @@ wiced_result_t wiced_filesystem_file_read ( wiced_file_t* file_handle, void* dat
 /**
  * Writes data to a file from a memory buffer
  *
- * @param[in] file_handle          - the file handle to write to
+ * @param[in] file_handle          - The file handle to write to
  * @param[in] data                 - A pointer to the memory buffer that contains
- *                                    the data that is to be written
- * @param[in] bytes_to_write       - the number of bytes to write
- * @param[out] written_bytes_count - receives the number of items successfully written.
+ *                                   the data that is to be written
+ * @param[in] bytes_to_write       - The number of bytes to write
+ * @param[out] written_bytes_count - Receives the number of bytes successfully written.
  *
  * @return WICED_SUCCESS  on success
  */
@@ -322,9 +347,9 @@ wiced_result_t wiced_filesystem_file_write( wiced_file_t* file_handle, const voi
 /**
  * Flush write data to media
  *
- * This is similar to the fflush() in ISO C.
+ * @note This is similar to the fflush() in ISO C.
  *
- * @param[in] file_handle - the file handle to flush
+ * @param[in] file_handle - The file handle to flush
  *
  * @return WICED_SUCCESS  on success
  */
@@ -334,9 +359,9 @@ wiced_result_t wiced_filesystem_file_flush ( wiced_file_t* file_handle );
 /**
  * Check the end-of-file flag for a file
  *
- * This is similar to the feof() in ISO C.
+ * @note This is similar to the feof() in ISO C.
  *
- * @param[in] file_handle - the file handle to check for EOF
+ * @param[in] file_handle - The file handle to check for EOF
  *
  * @return 1 = EOF or invalid file handle
  */
@@ -346,9 +371,9 @@ int wiced_filesystem_file_end_reached ( wiced_file_t* file_handle );
 /**
  * Close a file
  *
- * This is similar to the fclose() in ISO C.
+ * @note This is similar to the fclose() in ISO C.
  *
- * @param[in] file_handle - the file handle to close
+ * @param[in] file_handle - The file handle to close
  *
  * @return WICED_SUCCESS = success
  */
@@ -358,10 +383,10 @@ wiced_result_t wiced_filesystem_file_close ( wiced_file_t* file_handle );
 /**
  * Delete a file
  *
- * This is similar to the remove() in ISO C.
+ * @note This is similar to the remove() in ISO C.
  *
  * @param[in]  fs_handle      - The filesystem handle to use - obtained from wiced_filesystem_mount
- * @param[in]  filename       - the filename of the file to delete
+ * @param[in]  filename       - The filename of the file to delete
  *
  * @return WICED_SUCCESS on success
  */
@@ -371,12 +396,12 @@ wiced_result_t wiced_filesystem_file_delete ( wiced_filesystem_t* fs_handle, con
 /**
  * Opens a directory
  *
- * This is similar to the opendir() in ISO C.
+ * @note This is similar to the opendir() in ISO C.
  *
  * @param[in]  fsp      - The filesystem handle to use - obtained from wiced_filesystem_mount
- * @param[out] dirp     - a pointer to a directory structure which
+ * @param[out] dirp     - A pointer to a directory structure which
  *                        will be filled with the opened handle
- * @param[in]  dir_name - the path of the directory to open
+ * @param[in]  dir_name - The path of the directory to open
  *
  * @return WICED_SUCCESS on success
  */
@@ -386,13 +411,13 @@ wiced_result_t wiced_filesystem_dir_open ( wiced_filesystem_t* fs_handle, wiced_
 /**
  * Reads a directory entry
  *
- * This is similar to the readdir() in ISO C.
+ * @note This is similar to the readdir() in ISO C.
  *
- * @param[in]  dir_handle         - the directory handle to read from
- * @param[out] name_buffer        - pointer to a buffer that will receive the filename
- * @param[in]  name_buffer_length - the maximum number of bytes that can be put in the buffer
- * @param[out] type               - pointer to variable that will receive entry type (file or dir)
- * @param[out] details            - pointer to variable that will receive entry information (attribute, size, modified date/time)
+ * @param[in]  dir_handle         - The directory handle to read from
+ * @param[out] name_buffer        - Pointer to a buffer that will receive the filename
+ * @param[in]  name_buffer_length - The maximum number of bytes that can be put in the buffer
+ * @param[out] type               - Pointer to variable that will receive entry type (file or dir)
+ * @param[out] details            - Pointer to variable that will receive entry information (attribute, size, modified date/time)
  *
  * @return WICED_SUCCESS on success
  */
@@ -405,7 +430,7 @@ wiced_result_t wiced_filesystem_dir_read( wiced_dir_t* dir_handle, char* name_bu
  * Checks whether the selected directory handle is
  * at the end of the available directory entries.
  *
- * @param[in] dir_handle - the directory handle to check
+ * @param[in] dir_handle - The directory handle to check
  *
  * @return 1 = End-of-Directory
  */
@@ -415,9 +440,9 @@ int wiced_filesystem_dir_end_reached ( wiced_dir_t* dir_handle );
 /**
  * Returns a directory handle to the first entry
  *
- * This is similar to the rewinddir() in ISO C.
+ * @note This is similar to the rewinddir() in ISO C.
  *
- * @param[in] dir_handle - the directory handle to rewind
+ * @param[in] dir_handle - The directory handle to rewind
  *
  * @return WICED_SUCCESS = Success
  */
@@ -427,7 +452,7 @@ wiced_result_t wiced_filesystem_dir_rewind ( wiced_dir_t* dir_handle );
 /**
  * Closes a directory handle
  *
- * @param[in] dir_handle - the directory handle to close
+ * @param[in] dir_handle - The directory handle to close
  *
  * @return WICED_SUCCESS = Success
  */
@@ -438,13 +463,11 @@ wiced_result_t wiced_filesystem_dir_close ( wiced_dir_t* dir_handle );
  * Create a directory
  *
  * @param[in]  fs_handle       - The filesystem handle to use
- * @param[in]  directory_name  - the path of the directory to create
+ * @param[in]  directory_name  - The path of the directory to create
  *
  * @return WICED_SUCCESS on success
  */
 wiced_result_t wiced_filesystem_dir_create( wiced_filesystem_t* fs_handle, const char* directory_name );
-
-
 
 
 /**
@@ -458,19 +481,6 @@ wiced_result_t wiced_filesystem_dir_create( wiced_filesystem_t* fs_handle, const
  * @return WICED_SUCCESS on success
  */
 wiced_result_t wiced_filesystem_format( wiced_block_device_t* device, wiced_filesystem_handle_type_t fs_type );
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 /******************************************************

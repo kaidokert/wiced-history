@@ -142,7 +142,7 @@
 int ipv6_input(FAR struct net_driver_s *dev)
 {
   FAR struct ipv6_hdr_s *ipv6 = IPv6BUF;
-  uint16_t iplen;
+  uint16_t pktlen;
 
   /* This is where the input processing starts. */
 
@@ -162,7 +162,7 @@ int ipv6_input(FAR struct net_driver_s *dev)
       g_netstats.ipv6.vhlerr++;
 #endif
 
-      nlldbg("Invalid IPv6 version: %d\n", ipv6->vtc >> 4);
+      nlldbg("ERROR: Invalid IPv6 version: %d\n", ipv6->vtc >> 4);
       goto drop;
     }
 
@@ -174,18 +174,20 @@ int ipv6_input(FAR struct net_driver_s *dev)
    *
    * The length reported in the IPv6 header is the length of the payload
    * that follows the header. The device interface uses the d_len variable for
-   * holding the size of the entire packet, including the IP and link layer
-   * headers.
+   * holding the size of the entire packet, including the IP header and link
+   * layer header.
    */
 
-  iplen = (ipv6->len[0] << 8) + ipv6->len[1] + IPv6_HDRLEN;
-  if (iplen <= dev->d_len)
+  pktlen = ((uint16_t)ipv6->len[0] << 8) + (uint16_t)ipv6->len[1] +
+           IPv6_HDRLEN + netdev_ipv6_hdrlen(dev);
+
+  if (pktlen <= dev->d_len)
     {
-      dev->d_len = iplen;
+      dev->d_len = pktlen;
     }
   else
     {
-      nlldbg("IP packet shorter than length in IP header\n");
+      nlldbg("ERROR: IP packet shorter than length in IP header\n");
       goto drop;
     }
 
@@ -202,10 +204,7 @@ int ipv6_input(FAR struct net_driver_s *dev)
       return udp_ipv6_input(dev);
     }
 
-  /* In most other cases, the device must be assigned a non-zero IP
-   * address.  Another exception is when CONFIG_NET_PINGADDRCONF is
-   * enabled...
-   */
+  /* In other cases, the device must be assigned a non-zero IP address. */
 
   else
 #endif
@@ -217,7 +216,7 @@ int ipv6_input(FAR struct net_driver_s *dev)
        * packets.
        */
 
-      nlldbg("No IP address assigned\n");
+      nlldbg("ERROR: No IP address assigned\n");
       goto drop;
     }
 
@@ -280,7 +279,7 @@ int ipv6_input(FAR struct net_driver_s *dev)
         g_netstats.ipv6.protoerr++;
 #endif
 
-        nlldbg("Unrecognized IP protocol: %04x\n", ipv6->proto);
+        nlldbg("ERROR: Unrecognized IP protocol: %04x\n", ipv6->proto);
         goto drop;
     }
 

@@ -67,10 +67,6 @@
 #include "socket/socket.h"
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
  * Private Types
  ****************************************************************************/
 
@@ -82,7 +78,7 @@ struct tcp_close_s
   FAR struct socket       *cl_psock;  /* Reference to the TCP socket */
   sem_t                    cl_sem;    /* Signals disconnect completion */
   int                      cl_result; /* The result of the close */
-  uint32_t                 cl_start;  /* Time close started (in ticks) */
+  systime_t                cl_start;  /* Time close started (in ticks) */
 #endif
 };
 #endif
@@ -140,10 +136,10 @@ static inline int close_timeout(FAR struct tcp_close_s *pstate)
  * Function: netclose_interrupt
  *
  * Description:
- *   Handle uIP callback events.
+ *   Handle network callback events.
  *
  * Parameters:
- *   conn - uIP TCP connection structure
+ *   conn - TCP connection structure
  *
  * Returned Value:
  *   None
@@ -154,9 +150,9 @@ static inline int close_timeout(FAR struct tcp_close_s *pstate)
  ****************************************************************************/
 
 #ifdef CONFIG_NET_TCP
-static uint16_t netclose_interrupt(FAR struct net_driver_s *dev,
+static uint32_t netclose_interrupt(FAR struct net_driver_s *dev,
                                    FAR void *pvconn, FAR void *pvpriv,
-                                   uint16_t flags)
+                                   uint32_t flags)
 {
 #ifdef CONFIG_NET_SOLINGER
   FAR struct tcp_close_s *pstate = (FAR struct tcp_close_s *)pvpriv;
@@ -167,12 +163,14 @@ static uint16_t netclose_interrupt(FAR struct net_driver_s *dev,
 
   nllvdbg("conn: %p flags: %04x\n", conn, flags);
 
-  /* TCP_CLOSE:    The remote host has closed the connection
+  /* TCP_DISCONN_EVENTS:
+   *   TCP_CLOSE:    The remote host has closed the connection
    * TCP_ABORT:    The remote host has aborted the connection
    * TCP_TIMEDOUT: The remote did not respond, the connection timed out
+   *   NETDEV_DOWN:  The network device went down
    */
 
-  if ((flags & (TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT)) != 0)
+  if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
       /* The disconnection is complete */
 
@@ -221,7 +219,7 @@ static uint16_t netclose_interrupt(FAR struct net_driver_s *dev,
 #ifdef CONFIG_NET_TCP_WRITE_BUFFERS
   /* Check if all outstanding bytes have been ACKed */
 
-  else if (conn->unacked != 0)
+  else if (conn->unacked != 0 || !sq_empty(&conn->write_q))
     {
       /* No... we are still waiting for ACKs.  Drop any received data, but
        * do not yet report TCP_CLOSE in the response.
@@ -322,7 +320,7 @@ static inline void netclose_txnotify(FAR struct socket *psock,
  *   Break any current TCP connection
  *
  * Parameters:
- *   conn - uIP TCP connection structure
+ *   conn - TCP connection structure
  *
  * Returned Value:
  *   None
@@ -355,14 +353,11 @@ static inline int netclose_disconnect(FAR struct socket *psock)
 #ifdef CONFIG_NET_TCP_WRITE_BUFFERS
   if (psock->s_sndcb)
     {
-      tcp_callback_free(conn, psock->s_sndcb);
       psock->s_sndcb = NULL;
     }
 #endif
 
-  /* There shouldn't be any callbacks registered. */
-
-  DEBUGASSERT(conn && conn->list == NULL);
+  DEBUGASSERT(conn != NULL);
 
   /* Check for the case where the host beat us and disconnected first */
 
@@ -371,8 +366,7 @@ static inline int netclose_disconnect(FAR struct socket *psock)
     {
       /* Set up to receive TCP data event callbacks */
 
-      state.cl_cb->flags = (TCP_NEWDATA | TCP_POLL | TCP_CLOSE | TCP_ABORT |
-                            TCP_TIMEDOUT);
+      state.cl_cb->flags = (TCP_NEWDATA | TCP_POLL | TCP_DISCONN_EVENTS);
       state.cl_cb->event = netclose_interrupt;
 
 #ifdef CONFIG_NET_SOLINGER
@@ -434,7 +428,7 @@ static inline int netclose_disconnect(FAR struct socket *psock)
           /* Free the connection */
 
           conn->crefs = 0;          /* No more references on the connection */
-          tcp_free(conn);           /* Free uIP resources */
+          tcp_free(conn);           /* Free network resources */
 
           /* Get the result of the close */
 
@@ -523,13 +517,17 @@ int psock_close(FAR struct socket *psock)
       goto errout;
     }
 
-  /* We perform the uIP close operation only if this is the last count on the socket.
-   * (actually, I think the socket crefs only takes the values 0 and 1 right now).
+  /* We perform the close operation only if this is the last count on
+   * the socket. (actually, I think the socket crefs only takes the values
+   * 0 and 1 right now).
+   *
+   * It is possible for a psock to have no connection, e.g. a TCP socket
+   * waiting in accept.
    */
 
-  if (psock->s_crefs <= 1)
+  if (psock->s_crefs <= 1 && psock->s_conn != NULL)
     {
-      /* Perform uIP side of the close depending on the protocol type */
+      /* Perform local side of the close depending on the protocol type */
 
       switch (psock->s_type)
         {
@@ -564,7 +562,6 @@ int psock_close(FAR struct socket *psock)
 
                       tcp_unlisten(conn); /* No longer accepting connections */
                       conn->crefs = 0;    /* Discard our reference to the connection */
-
                       /* Break any current connections */
 
                       err = netclose_disconnect(psock);
@@ -576,6 +573,10 @@ int psock_close(FAR struct socket *psock)
 
                           goto errout_with_psock;
                         }
+
+                      /* Stop the network monitor */
+
+                      net_stopmonitor(conn);
                     }
                   else
                     {
@@ -647,7 +648,7 @@ int psock_close(FAR struct socket *psock)
                   /* Yes... free the connection structure */
 
                   conn->crefs = 0;          /* No more references on the connection */
-                  pkt_free(psock->s_conn);  /* Free uIP resources */
+                  pkt_free(psock->s_conn);  /* Free network resources */
                 }
               else
                 {

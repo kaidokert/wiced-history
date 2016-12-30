@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/tcp/tcp_send_buffered.c
  *
- *   Copyright (C) 2007-2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2014, 2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *           Jason Jiang  <jasonj@live.cn>
  *
@@ -102,10 +102,6 @@
 #endif
 
 /****************************************************************************
- * Private Types
- ****************************************************************************/
-
-/****************************************************************************
  * Private Functions
  ****************************************************************************/
 
@@ -131,10 +127,10 @@
 static void psock_insert_segment(FAR struct tcp_wrbuffer_s *wrb,
                                  FAR sq_queue_t *q)
 {
-  sq_entry_t *entry = (sq_entry_t*)wrb;
-  sq_entry_t *insert = NULL;
+  FAR sq_entry_t *entry = (FAR sq_entry_t *)wrb;
+  FAR sq_entry_t *insert = NULL;
 
-  sq_entry_t *itr;
+  FAR sq_entry_t *itr;
   for (itr = sq_peek(q); itr; itr = sq_next(itr))
     {
       FAR struct tcp_wrbuffer_s *wrb0 = (FAR struct tcp_wrbuffer_s*)itr;
@@ -181,8 +177,11 @@ static inline void psock_lost_connection(FAR struct socket *psock,
 
   /* Do not allow any further callbacks */
 
+  if (psock->s_sndcb != NULL)
+    {
   psock->s_sndcb->flags = 0;
   psock->s_sndcb->event = NULL;
+    }
 
   /* Free all queued write buffers */
 
@@ -216,7 +215,7 @@ static inline void psock_lost_connection(FAR struct socket *psock,
  *
  * Parameters:
  *   dev   - The structure of the network driver that caused the interrupt
- *   psock - Socket state structure
+ *   conn  - The structure of TCP connection
  *
  * Returned Value:
  *   None
@@ -228,21 +227,21 @@ static inline void psock_lost_connection(FAR struct socket *psock,
 
 #ifdef NEED_IPDOMAIN_SUPPORT
 static inline void send_ipselect(FAR struct net_driver_s *dev,
-                                 FAR struct socket *psock)
+                                 FAR struct tcp_conn_s *conn)
 {
   /* Which domain the the socket support */
 
-  if (psock->s_domain == PF_INET)
+  if (conn->domain == PF_INET)
     {
       /* Select the IPv4 domain */
 
       tcp_ipv4_select(dev);
     }
-  else /* if (psock->s_domain == PF_INET6) */
+  else /* if (conn->domain == PF_INET6) */
     {
       /* Select the IPv6 domain */
 
-      DEBUGASSERT(psock->s_domain == PF_INET6);
+      DEBUGASSERT(conn->domain == PF_INET6);
       tcp_ipv6_select(dev);
     }
 }
@@ -331,12 +330,24 @@ static inline bool psock_send_addrchck(FAR struct tcp_conn_s *conn)
  *
  ****************************************************************************/
 
-static uint16_t psock_send_interrupt(FAR struct net_driver_s *dev,
+static uint32_t psock_send_interrupt(FAR struct net_driver_s *dev,
                                      FAR void *pvconn, FAR void *pvpriv,
-                                     uint16_t flags)
+                                     uint32_t flags)
 {
   FAR struct tcp_conn_s *conn = (FAR struct tcp_conn_s *)pvconn;
   FAR struct socket *psock = (FAR struct socket *)pvpriv;
+
+#ifdef CONFIG_NETDEV_MULTINIC
+  /* The TCP socket is connected and, hence, should be bound to a device.
+   * Make sure that the polling device is the one that we are bound to.
+   */
+
+  DEBUGASSERT(conn->dev != NULL);
+  if (dev != conn->dev)
+    {
+      return flags;
+    }
+#endif
 
   nllvdbg("flags: %04x\n", flags);
 
@@ -488,13 +499,16 @@ static uint16_t psock_send_interrupt(FAR struct net_driver_s *dev,
 
   /* Check for a loss of connection */
 
-  else if ((flags & (TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT)) != 0)
+  else if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
       nllvdbg("Lost connection: %04x\n", flags);
 
-      /* Report not connected */
+      if (psock->s_conn != NULL)
+        {
+          /* Report not connected */
 
-      net_lostconnection(psock, flags);
+          net_lostconnection(psock, flags);
+        }
 
       /* Free write buffers and terminate polling */
 
@@ -698,9 +712,9 @@ static uint16_t psock_send_interrupt(FAR struct net_driver_s *dev,
            */
 
           sndlen = WRB_PKTLEN(wrb) - WRB_SENT(wrb);
-          if (sndlen > tcp_mss(conn))
+          if (sndlen > conn->mss)
             {
-              sndlen = tcp_mss(conn);
+              sndlen = conn->mss;
             }
 
           if (sndlen > conn->winsize)
@@ -732,11 +746,11 @@ static uint16_t psock_send_interrupt(FAR struct net_driver_s *dev,
 
           /* Set the expected ack sequence number. */
 
-          expect_ack = tcp_getsequence(conn->sndseq) + sndlen;
-          if (expect_ack - conn->expect_ack < UINT32_MAX / 2)
-            {
-              conn->expect_ack = expect_ack;
-            }
+           expect_ack = tcp_getsequence(conn->sndseq) + sndlen;
+           if (expect_ack - conn->expect_ack < UINT32_MAX / 2)
+             {
+               conn->expect_ack = expect_ack;
+             }
 
 #ifdef NEED_IPDOMAIN_SUPPORT
           /* If both IPv4 and IPv6 support are enabled, then we will need to
@@ -745,14 +759,13 @@ static uint16_t psock_send_interrupt(FAR struct net_driver_s *dev,
            * place and we need do nothing.
            */
 
-          send_ipselect(dev, psock);
+          send_ipselect(dev, conn);
 #endif
           /* Then set-up to send that amount of data with the offset
            * corresponding to the amount of data already sent. (this
            * won't actually happen until the polling cycle completes).
            */
-
-          devif_iob_send(dev, WRB_IOB(wrb), sndlen, WRB_SENT(wrb));
+           devif_iob_send(dev, WRB_IOB(wrb), sndlen, WRB_SENT(wrb));
 
           /* Remember how much data we send out now so that we know
            * when everything has been acknowledged.  Just increment
@@ -965,7 +978,6 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
     }
 #endif /* CONFIG_NET_ARP_SEND */
 
-
 #ifdef CONFIG_NET_ICMPv6_NEIGHBOR
 #ifdef CONFIG_NET_ARP_SEND
   else
@@ -1033,15 +1045,16 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
       /* Set up the callback in the connection */
 
       psock->s_sndcb->flags = (TCP_ACKDATA | TCP_REXMIT | TCP_POLL |
-                               TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT);
-      psock->s_sndcb->priv  = (void*)psock;
+                               TCP_DISCONN_EVENTS);
+      psock->s_sndcb->priv  = (FAR void *)psock;
       psock->s_sndcb->event = psock_send_interrupt;
 
       /* Initialize the write buffer */
 
       WRB_SEQNO(wrb) = (unsigned)-1;
       WRB_NRTX(wrb)  = 0;
-      WRB_COPYIN(wrb, (FAR uint8_t *)buf, len);
+
+      result = WRB_COPYIN(wrb, (FAR uint8_t *)buf, len);
 
       /* Dump I/O buffer chain */
 
@@ -1052,7 +1065,7 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
        */
 
       sq_addlast(&wrb->wb_node, &conn->write_q);
-      nvdbg("Queued WRB=%p pktlen=%u write_q(%p,%p)\n",
+      nllvdbg("Queued WRB=%p pktlen=%u write_q(%p,%p)\n",
             wrb, WRB_PKTLEN(wrb),
             conn->write_q.head, conn->write_q.tail);
 
@@ -1060,7 +1073,6 @@ ssize_t psock_tcp_send(FAR struct socket *psock, FAR const void *buf,
 
       send_txnotify(psock, conn);
       net_unlock(save);
-      result = len;
     }
 
   /* Set the socket state to idle */
@@ -1100,6 +1112,55 @@ errout_with_lock:
 errout:
   set_errno(err);
   return ERROR;
+}
+
+/****************************************************************************
+ * Function: psock_tcp_cansend
+ *
+ * Description:
+ *   psock_tcp_cansend() returns a value indicating if a write to the socket
+ *   would block.  No space in the buffer is actually reserved, so it is
+ *   possible that the write may still block if the buffer is filled by
+ *   another means.
+ *
+ * Parameters:
+ *   psock    An instance of the internal socket structure.
+ *
+ * Returned Value:
+ *   OK
+ *     At least one byte of data could be succesfully written.
+ *   -EWOULDBLOCK
+ *     There is no room in the output buffer.
+ *   -EBADF
+ *     An invalid descriptor was specified.
+ *   -ENOTCONN
+ *     The socket is not connected.
+ *
+ * Assumptions:
+ *   Not running at the interrupt level
+ *
+ ****************************************************************************/
+
+int psock_tcp_cansend(FAR struct socket *psock)
+{
+  if (!psock || psock->s_crefs <= 0)
+    {
+      ndbg("ERROR: Invalid socket\n");
+      return -EBADF;
+    }
+
+  if (psock->s_type != SOCK_STREAM || !_SS_ISCONNECTED(psock->s_flags))
+    {
+      ndbg("ERROR: Not connected\n");
+      return -ENOTCONN;
+    }
+
+  if (tcp_wrbuffer_test())
+    {
+      return -EWOULDBLOCK;
+    }
+
+  return OK;
 }
 
 #endif /* CONFIG_NET && CONFIG_NET_TCP && CONFIG_NET_TCP_WRITE_BUFFERS */

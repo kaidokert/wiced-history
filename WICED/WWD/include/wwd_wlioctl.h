@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 /*
  * Custom OID/ioctl definitions for
@@ -209,6 +232,30 @@ typedef struct wl_rateset_args {
     uint8_t    rates[WL_MAXRATES_IN_SET]; /* rates in 500kbps units w/hi bit set if basic */
     uint8_t    mcs[WL_MAXRATES_IN_SET];   /* supported mcs index bit map */
 } wl_rateset_args_t;
+
+#define WL_RSPEC_RATE_MASK      0x000000FF      /* rate or HT MCS value */
+#define WL_RSPEC_VHT_MCS_MASK   0x0000000F      /* VHT MCS value */
+#define WL_RSPEC_VHT_NSS_MASK   0x000000F0      /* VHT Nss value */
+#define WL_RSPEC_VHT_NSS_SHIFT  4               /* VHT Nss value shift */
+#define WL_RSPEC_TXEXP_MASK     0x00000300
+#define WL_RSPEC_TXEXP_SHIFT    8
+#define WL_RSPEC_BW_MASK        0x00070000      /* bandwidth mask */
+#define WL_RSPEC_BW_SHIFT       16              /* bandwidth shift */
+#define WL_RSPEC_STBC           0x00100000      /* STBC encoding, Nsts = 2 x Nss */
+#define WL_RSPEC_TXBF           0x00200000      /* bit indicates TXBF mode */
+#define WL_RSPEC_LDPC           0x00400000      /* bit indicates adv coding in use */
+#define WL_RSPEC_SGI            0x00800000      /* Short GI mode */
+#define WL_RSPEC_ENCODING_MASK  0x03000000      /* Encoding of Rate/MCS field */
+#define WL_RSPEC_OVERRIDE_RATE  0x40000000      /* bit indicate to override mcs only */
+#define WL_RSPEC_OVERRIDE_MODE  0x80000000      /* bit indicates override both rate & mode */
+#define WL_RSPEC_BW_UNSPECIFIED 0
+#define WL_RSPEC_BW_20MHZ       0x00010000
+#define WL_RSPEC_BW_40MHZ       0x00020000
+#define WL_RSPEC_BW_80MHZ       0x00030000
+#define WL_RSPEC_BW_160MHZ      0x00040000
+#define WL_RSPEC_ENCODE_RATE    0x00000000      /* Legacy rate is stored in RSPEC_RATE_MASK */
+#define WL_RSPEC_ENCODE_HT      0x01000000      /* HT MCS is stored in RSPEC_RATE_MASK */
+#define WL_RSPEC_ENCODE_VHT     0x02000000      /* VHT MCS and Nss is stored in RSPEC_RATE_MASK */
 
 typedef struct wl_uint32_list
 {
@@ -733,6 +780,16 @@ typedef struct wlc_iov_trx_s
 #define IOVAR_STR_SCAN_HOME_TIME         "scan_home_time"
 #define IOVAR_STR_SCAN_NPROBES           "scan_nprobes"
 #define IOVAR_STR_AUTOCOUNTRY            "autocountry"
+#define IOVAR_STR_CAP                    "cap"
+
+#define IOVAR_STR_WOWL                   "wowl"
+#define IOVAR_STR_WOWL_OS                "wowl_os"
+#define IOVAR_STR_WOWL_KEEP_ALIVE        "wowl_keepalive"
+#define IOVAR_STR_WOWL_PATTERN           "wowl_pattern"
+#define IOVAR_STR_WOWL_PATTERN_CLR       "wowl_pattern clr"
+#define IOVAR_STR_WOWL_ARP_HOST_IP       "wowl_arp_hostip"
+#define IOVAR_STR_ULP_WAIT               "ulp_wait"
+#define IOVAR_STR_ULP                    "ulp"
 
 #define IOVAR_STR_PNO_ON                 "pfn"
 #define IOVAR_STR_PNO_ADD                "pfn_add"
@@ -2998,13 +3055,14 @@ typedef struct wl_sslpnphy_percal_debug_data
     int32_t volt_winner;
 } wl_sslpnphy_percal_debug_data_t;
 #endif
-#define WL_WOWL_MAGIC    (1 << 0)
-#define WL_WOWL_NET    (1 << 1)
-#define WL_WOWL_DIS    (1 << 2)
-#define WL_WOWL_RETR    (1 << 3)
-#define WL_WOWL_BCN    (1 << 4)
-#define WL_WOWL_TST    (1 << 5)
-#define WL_WOWL_BCAST    (1 << 15)
+#define WL_WOWL_MAGIC       (1 << 0)
+#define WL_WOWL_NET         (1 << 1)
+#define WL_WOWL_DIS         (1 << 2)
+#define WL_WOWL_RETR        (1 << 3)
+#define WL_WOWL_BCN         (1 << 4)
+#define WL_WOWL_TST         (1 << 5)
+#define WL_WOWL_TRAFFIC     (1 << 12)
+#define WL_WOWL_BCAST       (1 << 15)
 #define MAGIC_PKT_MINLEN 102
 typedef struct
 {

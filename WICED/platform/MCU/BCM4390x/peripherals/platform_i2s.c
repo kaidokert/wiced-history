@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -415,7 +438,16 @@ wiced_result_t wiced_i2s_deinit( wiced_i2s_t i2s )
 
     I2S_LOCK_PORT(port);
 
-    wiced_assert("stream is not in use!", control->in_use & (1 << dir));
+    if (!(control->in_use & (1 << dir)))
+    {
+        /*
+         * Not in use so there's nothing to do.
+         */
+
+        I2S_UNLOCK_PORT(port);
+
+        return WICED_SUCCESS;
+    }
 
     /* Clean-up stream. */
     if (control->in_use & (1 << dir))
@@ -909,6 +941,8 @@ static wiced_result_t i2s_configure_pll( osl_t *osh, si_t *sih, const platform_a
         {.mclk = 11289600,  .i_ndiv_int = 38,  .i_ndiv_frac = 10707273, .i_mdiv = 64 },
         /* 12.288MHz */
         {.mclk = 12288000,  .i_ndiv_int = 42,  .i_ndiv_frac = 925887,   .i_mdiv = 64 },
+        /* 22.5792MHz */
+        {.mclk = 22579200,  .i_ndiv_int = 38,  .i_ndiv_frac = 10707273, .i_mdiv = 32 },
         /* 24.576MHz */
         {.mclk = 24576000,  .i_ndiv_int = 42,  .i_ndiv_frac = 925887,   .i_mdiv = 32 },
     };

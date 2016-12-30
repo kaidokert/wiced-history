@@ -14,7 +14,14 @@
  */
 #pragma once
 
-#include "wiced.h"
+#include "wiced_utilities.h"
+#include "wiced_framework.h"
+#include "wiced_platform.h"
+#include "wiced_rtos.h"
+#include "wiced_time.h"
+#include "wiced_defaults.h"
+#include "wwd_debug.h"
+#include "wwd_assert.h"
 #include "gattdefs.h"
 #include "wiced_bt_dev.h"
 #include "l2cdefs.h"
@@ -218,7 +225,7 @@ typedef struct
 /** Attribute write request */
 typedef struct
 {
-    uint16_t      handle;     /**< Handle of attribute to read */
+    uint16_t      handle;     /**< Handle of attribute to write */
     wiced_bool_t  is_prep;    /**< TRUE if this is a prepare write request */
     uint16_t      offset;     /**< Offset to write */
     uint16_t      val_len;    /**< Value length */

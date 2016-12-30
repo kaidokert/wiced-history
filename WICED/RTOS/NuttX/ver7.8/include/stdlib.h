@@ -154,6 +154,7 @@ long long strtoll(const char *, char **, int);
 unsigned long long strtoull(const char *, char **, int);
 #endif
 double_t  strtod(const char *, char **);
+float strtof(const char *, char **);
 
 #define atoi(nptr)  strtol((nptr), NULL, 10)
 #define atol(nptr)  strtol((nptr), NULL, 10)
@@ -161,6 +162,7 @@ double_t  strtod(const char *, char **);
 #define atoll(nptr) strtoll((nptr), NULL, 10)
 #endif
 #define atof(nptr)  strtod((nptr), NULL)
+
 
 /* Binary to string conversions */
 
@@ -195,6 +197,12 @@ struct mallinfo mallinfo(void);
 #else
 int      mallinfo(struct mallinfo *info);
 #endif
+
+/* Binary search */
+
+FAR void *bsearch(FAR const void *key, FAR const void *base, size_t nel,
+                  size_t width, CODE int (*compar)(FAR const void *,
+                  FAR const void *));
 
 #undef EXTERN
 #if defined(__cplusplus)

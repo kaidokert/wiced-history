@@ -38,7 +38,6 @@
  ****************************************************************************/
 
 #include <nuttx/config.h>
-#ifdef CONFIG_NET
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -226,7 +225,7 @@ ssize_t psock_sendto(FAR struct socket *psock, FAR const void *buf,
 
   if (nsent < 0)
     {
-      ndbg("ERROR: Unix domain sendto() failed: %ld\n", (long)nsent);
+      ndbg("ERROR: UDP or Unix domain sendto() failed: %ld\n", (long)nsent);
       err = -nsent;
       goto errout;
     }
@@ -319,5 +318,3 @@ ssize_t sendto(int sockfd, FAR const void *buf, size_t len, int flags,
 
   return psock_sendto(psock, buf, len, flags, to, tolen);
 }
-
-#endif /* CONFIG_NET */

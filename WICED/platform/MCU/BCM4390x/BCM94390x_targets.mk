@@ -1,22 +1,52 @@
 #
-# Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
-# All Rights Reserved.
-#
-# This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
-# the contents of this file may not be disclosed to third parties, copied
-# or duplicated in any form, in whole or in part, without the prior
-# written permission of Broadcom Corporation.
+# Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ # Cypress Semiconductor Corporation. All Rights Reserved.
+ # This software, including source code, documentation and related
+ # materials ("Software"), is owned by Cypress Semiconductor Corporation
+ # or one of its subsidiaries ("Cypress") and is protected by and subject to
+ # worldwide patent protection (United States and foreign),
+ # United States copyright laws and international treaty provisions.
+ # Therefore, you may use this Software only as provided in the license
+ # agreement accompanying the software package from which you
+ # obtained this Software ("EULA").
+ # If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ # non-transferable license to copy, modify, and compile the Software
+ # source code solely for use in connection with Cypress's
+ # integrated circuit products. Any reproduction, modification, translation,
+ # compilation, or representation of this Software except as specified
+ # above is prohibited without the express written permission of Cypress.
+ #
+ # Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ # EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ # reserves the right to make changes to the Software without notice. Cypress
+ # does not assume any liability arising out of the application or use of the
+ # Software or any product or circuit described in the Software. Cypress does
+ # not authorize its products for use in any products where a malfunction or
+ # failure of the Cypress product may reasonably be expected to result in
+ # significant property damage, injury or death ("High Risk Product"). By
+ # including Cypress's product in a High Risk Product, the manufacturer
+ # of such system or application assumes all risk of such use and in doing
+ # so agrees to indemnify Cypress against all liability.
 #
 
 .PHONY: bootloader download_bootloader no_dct download_dct download ota2_bootloader
 
+ifneq ($(BOARD_REVISION),)
+PLATFORM_BUS := $(PLATFORM)-$(BOARD_REVISION)-$(BUS)
+else
+PLATFORM_BUS := $(PLATFORM)-$(BUS)
+endif
+
 # use the ota2 bootloader
 ifeq (1, $(OTA2_SUPPORT))
 NO_TINY_BOOTLOADER_REQUIRED:=1
-BOOTLOADER_TARGET := waf.ota2_bootloader-NoOS-NoNS-$(PLATFORM)-$(BUS)
+BOOTLOADER_TARGET := waf.ota2_bootloader-NoOS-NoNS-$(PLATFORM_BUS)
+OTA2_FAILSAFE_TARGET := waf.ota2_failsafe-$(PLATFORM_BUS)
+OTA2_FAILSAFE_TARGET_FILE:= $(BUILD_DIR)/$(OTA2_FAILSAFE_TARGET)/binary/$(OTA2_FAILSAFE_TARGET).stripped.elf
 else
 #NO_TINY_BOOTLOADER_REQUIRED:=1	#temp
-BOOTLOADER_TARGET := waf.bootloader-NoOS-NoNS-$(PLATFORM)-$(BUS)
+BOOTLOADER_TARGET := waf.bootloader-NoOS-NoNS-$(PLATFORM_BUS)
 endif # OTA2_SUPPORT
 BOOTLOADER_TARGET_FILE := $(BUILD_DIR)/$(BOOTLOADER_TARGET)/binary/$(BOOTLOADER_TARGET)
 BOOTLOADER_LINK_FILE := $(BUILD_DIR)/$(BOOTLOADER_TARGET)/binary/$(BOOTLOADER_TARGET)$(LINK_OUTPUT_SUFFIX)
@@ -53,14 +83,23 @@ else
 BOOTLOADER_FINAL_TRX_FILE := $(BOOTLOADER_TRX_FILE)
 endif
 
-TINY_BOOTLOADER_TARGET := waf.tiny_bootloader-NoOS-NoNS-$(PLATFORM)-$(BUS)
+ifeq (1, $(SECURE_SFLASH))
+SFLASH_ENCRYPTION_KEY := $(KEYSDIR)/$(KEYS)/boot_aes.key
+SFLASH_SIGNING_KEY    := $(KEYSDIR)/$(KEYS)/boot_sha.key
+BLOCK_SIZE            := 4096
+PAD_FILE_IF_NEEDED   := 0
+DO_NOT_PAD_FILE      := 1
+endif
+
+
+TINY_BOOTLOADER_TARGET := waf.tiny_bootloader-NoOS-NoNS-$(PLATFORM_BUS)
 TINY_BOOTLOADER_LOG_FILE ?= $(BUILD_DIR)/tiny_bootloader.log
 TINY_BOOTLOADER_BIN_FILE := $(BUILD_DIR)/$(TINY_BOOTLOADER_TARGET)/binary/$(TINY_BOOTLOADER_TARGET).bin
 TINY_BOOTLOADER_BIN2C_FILE := $(OUTPUT_DIR)/tiny_bootloader_bin2c.c
 TINY_BOOTLOADER_BIN2C_OBJ  := $(OUTPUT_DIR)/tiny_bootloader_bin2c.o
 TINY_BOOTLOADER_BIN2C_ARRAY_NAME := tinybl_bin
 
-SFLASH_APP_TARGET := waf.sflash_write-NoOS-$(PLATFORM)-$(BUS)
+SFLASH_APP_TARGET := waf.sflash_write-NoOS-$(PLATFORM_BUS)
 SFLASH_APP_OUTFILE := $(BUILD_DIR)/$(SFLASH_APP_TARGET)/binary/$(SFLASH_APP_TARGET)
 
 
@@ -77,7 +116,7 @@ endif
 endif
 
 SFLASH_APP_BCM4390 := 43909
-SFLASH_APP_PLATFROM_BUS := $(PLATFORM)-$(BUS)
+SFLASH_APP_PLATFROM_BUS := $(PLATFORM_BUS)
 
 # this must be zero as defined in the ROM bootloader
 SFLASH_BOOTLOADER_LOC := 0x00000000
@@ -88,6 +127,9 @@ SFLASH_DCT_LOC:= $(OTA2_IMAGE_CURR_DCT_1_AREA_BASE)
 SFLASH_FS_LOC := $(OTA2_IMAGE_CURR_FS_AREA_BASE)
 else
 SFLASH_DCT_LOC:= 0x00008000
+SFLASH_DCT2_LOC:= 0x0000C000
+SFLASH_DCT_START_SECTOR:= 8
+SFLASH_DCT2_START_SECTOR:= 12
 SFLASH_FS_LOC := 0x00010000
 endif # OTA2_SUPPORT
 
@@ -149,7 +191,7 @@ no_tinybl:
 ifneq (1,$(NO_TINY_BOOTLOADER_REQUIRED))
 LINK_LIBS += $(TINY_BOOTLOADER_BIN2C_OBJ)
 $(TINY_BOOTLOADER_BIN2C_OBJ):
-	$(ECHO) Building Tiny Bootloader
+	$(ECHO) Building Tiny Bootloader $(TINY_BOOTLOADER_TARGET)
 	$(MAKE) -r -f $(SOURCE_ROOT)Makefile $(TINY_BOOTLOADER_TARGET) -I$(OUTPUT_DIR) SUB_BUILD=tiny_bootloader $(TINY_BOOTLOADER_REDIRECT)
 	$(BIN2C) $(TINY_BOOTLOADER_BIN_FILE) $(TINY_BOOTLOADER_BIN2C_FILE) $(TINY_BOOTLOADER_BIN2C_ARRAY_NAME)
 	$(CC) $(CPU_CFLAGS) $(COMPILER_SPECIFIC_COMP_ONLY_FLAG) $(TINY_BOOTLOADER_BIN2C_FILE) $(WICED_SDK_DEFINES) $(WICED_SDK_INCLUDES) $(COMPILER_SPECIFIC_DEBUG_CFLAGS)  $(COMPILER_SPECIFIC_STANDARD_CFLAGS) -o $(TINY_BOOTLOADER_BIN2C_OBJ)
@@ -197,7 +239,22 @@ endif
 
 download_bootloader: bootloader display_map_summary download_dct
 	$(QUIET)$(ECHO) Downloading Bootloader ...
-	$(QUIET)$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(BOOTLOADER_FINAL_TRX_FILE) $(SFLASH_BOOTLOADER_LOC) $(PLATFORM)-$(BUS) 1 43909" -c shutdown $(DOWNLOAD_LOG) 2>&1
+	$(QUIET)$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(BOOTLOADER_FINAL_TRX_FILE) $(SFLASH_BOOTLOADER_LOC) $(PLATFORM_BUS) 1 43909" -c shutdown $(DOWNLOAD_LOG) 2>&1
+	$(QUIET)$(ECHO) Finished Downloading Bootloader
+
+ifeq (1,$(OTA2_SUPPORT))
+APPS_LUT_DOWNLOAD_DEP += ota2_failsafe_download
+ota2_failsafe: bootloader
+	$(QUIET)$(ECHO) Building OTA2 Failsafe
+	$(QUIET)$(MAKE) -r -f $(SOURCE_ROOT)Makefile $(OTA2_FAILSAFE_TARGET) -I$(OUTPUT_DIR)  SFLASH= EXTERNAL_WICED_GLOBAL_DEFINES=$(EXTERNAL_WICED_GLOBAL_DEFINES) SUB_BUILD=bootloader $(BOOTLOADER_REDIRECT)
+	$(QUIET)$(ECHO) Finished Building OTA2 Failsafe
+	$(QUIET)$(ECHO_BLANK_LINE)
+
+ota2_failsafe_download: ota2_failsafe download_bootloader
+	$(QUIET)$(ECHO) Downloading OTA2 Failsafe App ...
+	$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(OTA2_FAILSAFE_TARGET_FILE) $(OTA2_FAILSAFE_APP_ADDRESS) $(SFLASH_APP_PLATFROM_BUS) 0 $(SFLASH_APP_BCM4390)" -c shutdown $(DOWNLOAD_LOG) 2>&1
+	$(QUIET)$(ECHO) Finished Downloading OTA2 Failsafe App
+endif
 
 copy_bootloader_output_for_eclipse: build_done $(BUILD_DIR)/eclipse_debug
 	$(QUIET)$(CP) $(BOOTLOADER_LINK_FILE) $(BUILD_DIR)/eclipse_debug/last_bootloader.elf
@@ -208,12 +265,31 @@ endif
 $(BUILD_DIR)/eclipse_debug:
 	$(QUIET)$(call MKDIR, $(BUILD_DIR)/eclipse_debug/)
 
+ifeq (1, $(DCT_IMAGE_SECURE))
+DCT_IMAGE_PLATFORM    := $(FINAL_DCT_FILE).secure
+DCT2_IMAGE_PLATFORM   := $(DCT_IMAGE_PLATFORM)_2
+$(DCT_IMAGE_PLATFORM): $(FINAL_DCT_FILE)
+	$(QUIET)$(ECHO) Padding DCT
+	$(QUIET)$(CP) $(FINAL_DCT_FILE) $(FINAL_DCT_FILE).pad
+	$(QUIET)$(PERL) $(TOOLS_ROOT)/create_dct/pad_dct.pl $(FINAL_DCT_FILE).pad
+	$(QUIET)$(ECHO) Encrypting and Signing DCT
+	$(HMAC_SHA256_SIGNER) sign $(SFLASH_SIGNING_KEY) $(FINAL_DCT_FILE).pad $(FINAL_DCT_FILE).sige $(BLOCK_SIZE) $(DO_NOT_PAD_FILE)
+	$(AES128_CBC_ENCRYPTOR) enc $(SFLASH_ENCRYPTION_KEY) $(FINAL_DCT_FILE).sige $(FINAL_DCT_FILE).secure_2 $(BLOCK_SIZE) $(SFLASH_DCT2_START_SECTOR)
+	$(AES128_CBC_ENCRYPTOR) enc $(SFLASH_ENCRYPTION_KEY) $(FINAL_DCT_FILE).sige $(FINAL_DCT_FILE).secure $(BLOCK_SIZE) $(SFLASH_DCT_START_SECTOR)
+else
+DCT_IMAGE_PLATFORM             := $(FINAL_DCT_FILE)
+endif
+
 # DCT Targets
 ifneq (no_dct,$(findstring no_dct,$(MAKECMDGOALS)))
 APPS_LUT_DOWNLOAD_DEP += download_dct
-download_dct: $(FINAL_DCT_FILE) display_map_summary sflash_write_app
-	$(QUIET)$(ECHO) Downloading DCT BCM94390x_targets.mk ... $(FINAL_DCT_FILE) @ SFLASH_DCT_LOC=$(SFLASH_DCT_LOC)
-	$(QUIET)$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(FINAL_DCT_FILE) $(SFLASH_DCT_LOC) $(PLATFORM)-$(BUS) 0 43909" -c shutdown $(DOWNLOAD_LOG) 2>&1
+download_dct: $(DCT_IMAGE_PLATFORM) display_map_summary sflash_write_app
+	$(QUIET)$(ECHO) Downloading DCT ... $(DCT_IMAGE_PLATFORM) @ SFLASH_DCT_LOC=$(SFLASH_DCT_LOC)
+	$(QUIET)$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(DCT_IMAGE_PLATFORM) $(SFLASH_DCT_LOC) $(PLATFORM_BUS) 0 43909" -c shutdown $(DOWNLOAD_LOG) 2>&1
+ifeq (1, $(DCT_IMAGE_SECURE))
+	$(QUIET)$(ECHO) Downloading DCT2 ... $(DCT2_IMAGE_PLATFORM) @ SFLASH_DCT_LOC=$(SFLASH_DCT2_LOC)
+	$(QUIET)$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(DCT2_IMAGE_PLATFORM) $(SFLASH_DCT2_LOC) $(PLATFORM_BUS) 0 43909" -c shutdown $(DOWNLOAD_LOG) 2>&1
+endif
 
 else
 download_dct:
@@ -246,7 +322,17 @@ EXTRA_POST_BUILD_TARGETS += copy_output_for_eclipse $(FS_IMAGE)  .gdbinit_platfo
 
 STAGING_DIR := $(OUTPUT_DIR)/resources/Staging/
 FS_IMAGE    := $(OUTPUT_DIR)/filesystem.bin
+
+ifeq (1, $(FILESYSTEM_IMAGE_SECURE))
+SECURE_FS_IMAGE := $(FS_IMAGE).sig
+FILESYSTEM_IMAGE := $(SECURE_FS_IMAGE)
+
+$(SECURE_FS_IMAGE): $(FS_IMAGE)
+	$(QUIET)$(ECHO) Signing Filesystem
+	$(HMAC_SHA256_SIGNER) sign $(SFLASH_SIGNING_KEY) $(FS_IMAGE) $(FS_IMAGE).sig $(BLOCK_SIZE) $(PAD_FILE_IF_NEEDED)
+else
 FILESYSTEM_IMAGE := $(FS_IMAGE)
+endif
 
 $(FS_IMAGE): $(STRIPPED_LINK_OUTPUT_FILE) display_map_summary $(STAGING_DIR).d
 	$(QUIET)$(ECHO) Creating Filesystem BCM94390x_targets.mk ...
@@ -259,23 +345,16 @@ endif
 	$(QUIET)$(COMMON_TOOLS_PATH)mk_wicedfs32 $(FS_IMAGE) $(STAGING_DIR)
 	$(QUIET)$(ECHO) Creating Filesystem Done
 
-
 ifeq (1, $(SECURE_SFLASH))
-SECURE_STRIPPED_LINK_OUTPUT_FILE := $(STRIPPED_LINK_OUTPUT_FILE).sig.enc
-SFLASH_ENCRYPTION_KEY := $(KEYSDIR)/$(KEYS)/boot_aes.key
-SFLASH_SIGNING_KEY    := $(KEYSDIR)/$(KEYS)/boot_sha.key
-BLOCK_SIZE            := 4096
+SECURE_STRIPPED_LINK_OUTPUT_FILE := $(STRIPPED_LINK_OUTPUT_FILE).sig
 APP0                  := $(SECURE_STRIPPED_LINK_OUTPUT_FILE)
 
 $(SECURE_STRIPPED_LINK_OUTPUT_FILE): $(STRIPPED_LINK_OUTPUT_FILE)
-	$(QUIET)$(ECHO) Encrypting and Signing
-	$(HMAC_SHA256_SIGNER) sign $(SFLASH_SIGNING_KEY) $(STRIPPED_LINK_OUTPUT_FILE) $(STRIPPED_LINK_OUTPUT_FILE).sig $(BLOCK_SIZE)
-	$(AES128_CBC_ENCRYPTOR) enc $(SFLASH_ENCRYPTION_KEY) $(STRIPPED_LINK_OUTPUT_FILE).sig $(STRIPPED_LINK_OUTPUT_FILE).sig.enc $(BLOCK_SIZE)
+	$(QUIET)$(ECHO) Signing APP0
+	$(HMAC_SHA256_SIGNER) sign $(SFLASH_SIGNING_KEY) $(STRIPPED_LINK_OUTPUT_FILE) $(STRIPPED_LINK_OUTPUT_FILE).sig $(BLOCK_SIZE) $(PAD_FILE_IF_NEEDED)
 else
 APP0                    := $(STRIPPED_LINK_OUTPUT_FILE)
-endif
-
-
+endif #SECURE_SFLASH
 
 ifdef BUILD_ROM
 
@@ -357,7 +436,7 @@ endif
 
 download_filesystem: $(FS_IMAGE) display_map_summary  $(FS_DEP)
 	$(QUIET)$(ECHO) Downloading filesystem ...
-	$(QUIET)$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(FS_IMAGE) $(SFLASH_FS_LOC) $(PLATFORM)-$(BUS) 0 43909" -c shutdown $(DOWNLOAD_LOG) 2>&1
+	$(QUIET)$(call CONV_SLASHES,$(OPENOCD_FULL_NAME)) -f $(OPENOCD_PATH)$(JTAG).cfg -f $(OPENOCD_PATH)$(HOST_OPENOCD).cfg -f apps/waf/sflash_write/sflash_write.tcl -c "sflash_write_file $(FS_IMAGE) $(SFLASH_FS_LOC) $(PLATFORM_BUS) 0 43909" -c shutdown $(DOWNLOAD_LOG) 2>&1
 
 
 .gdbinit_platform:

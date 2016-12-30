@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -16,14 +39,13 @@
  * 1) Basic Rules:
  *
  *  WE CANNOT CHANGE THE LAYOUT OF platform_dct_header_t FROM THE SDK VERSION THE BOOTLOADER WAS BUILT WITH
- *
- *    ---> DO NOT CHANGE platform_dct_header_t !!! <---
+ *  DO NOT ADD OR REMOVE ANY FIELDS OR STRUCTURES BETWEEN platform_dct_header_t AND platform_dct_version_t !!!
  *
  *      The Bootloader only knows about platform_dct_header_t for the SDK it was built upon.
  *      The Bootloader is not upgrade-able, so platform_dct_header_t MUST match the platform_dct_header_t
  *      and all fields be used in the same manner as the Bootloader's SDK.
  *
- *    ---> DO NOT CHANGE platform_dct_header_t !!! <---
+ *  --> DO NOT ADD OR REMOVE ANY FIELDS OR STRUCTURES BETWEEN platform_dct_header_t AND platform_dct_version_t !!! <--
  *
  *      If you need to add something that you believe should be in platform_dct_header_t.
  *      see if it makes sense to put the field into platform_dct_version_h. Doing this will make
@@ -31,8 +53,8 @@
  *
  *    ---> ONLY ADD DATA TO THE END of platform_dct_data_t after platform_dct_version_h !!! <---
  *
- *    Adding/removing/changing fields in existing structures will require
- *    code to update from the previous version of the DCT to the new version you are creating.
+ *    Changing fields in existing structures (or new structures to the end of platform_dct_data_t)
+ *    will require code to update from the previous version of the DCT to the new version you are creating.
  *
  *    All sub-structures MUST be a multiple of 4 bytes in size.
  *
@@ -44,26 +66,36 @@
  *              WICED_DCT_INCLUDE_P2P_CONFIG
  *              WICED_DCT_INCLUDE_OTA2_CONFIG
  *
+ *    ---> ONLY ADD DATA TO THE END of platform_dct_data_t after platform_dct_version_h !!! <---
+ *
  *  2) Steps to ADD data to the end of platform_dct_data_t
- *     - Encapsulate the new data in a structure (or use an existing structure if appropriate)
- *     - Add the new structure inside platform_dct_data_t, after the last structure (currently platform_dct_version_h)
+ *     - Encapsulate the new data in a new structure - name it "misc" or "additional"
+ *     - Add the new structure inside platform_dct_data_t, after the last structure (currently platform_dct_version_t)
  *     - Add a new DCT_BOOTLOADER_SDK_CURRENT to the #defines below and comment changes
- *     - Add code to platform_dct_upgrade.c to support changes from the previous DCT version to the new DCT version
+ *     - Add code to platform_dct_external_common.c :: wiced_dct_external_dct_update AND
+ *           platform_dct_internal_common.c :: wiced_dct_internal_dct_update
+ *           to support changes from the previous DCT version to the current DCT version
+ *     - Add support to call the upgrade routine in wiced_dct_external_common.c and wiced_dct_internal_common.c in
+ *       functions wiced_dct_external_dct_update() and wiced_dct_internal_dct_update().
  *
  *  3) If you are deprecating a field in an existing structure
- *      - change the name of the field to "deprecated_xxxx" where xxx is teh previous field's name
- *      - This will keep the documentation of the change as part of the code, which may be important in future
+ *      - change the name of the field to "deprecated_xxxx" where xxx is the previous field's name
+ *      - This will keep the documentation of the change as part of the code
+ *      - You may re-use a deprecated field (rename it, but keep the deprecated name in a comment )
  *
- *  4) If you must change or add fields in an existing DCT structure
+ *  4) If you must change fields in an existing DCT structure
+ *     - THE CHANGES MUST NOT CHANGE THE SIZE OF THE STRUCTURE !!!!
  *     - provide the previous structure define with the SDK version at the end of the structure name. See the file
- *       platform_dct_old_sdk.h in this directory.
- *        (i.e. platform_dct_sdk_ver_t becomes platform_dct_sdk_ver_sdk_x_x_x_t)
- *     - modify the new structure with your changes
+ *       platform_dct_old_sdk.h in this directory. The SDK in the name is when the struct was last changed.
+ *       So if the structure hasn't changed since SDK-3.6.0, the old copy of the structure will be:
+ *            platform_dct_type_t becomes platform_dct_type_sdk_3_6_0_t
+ *     - modify the current structure with your new changes
  *     - Add a new DCT_BOOTLOADER_SDK_CURRENT to the #defines below and comment changes
- *     - Add code to platform_dct_upgrade.c to support changing the previous
- *       DCT version to the new DCT version
+ *     - Add code to platform_dct_external_common.c :: wiced_dct_external_dct_update AND
+ *           platform_dct_internal_common.c :: wiced_dct_internal_dct_update
+ *           to support changes from the previous DCT version to the current DCT version
  *     - Add support to call the upgrade routine in wiced_dct_external_common.c and wiced_dct_internal_common.c in
- *       functions wiced_dct_external_dct_update() and wiced_dct_internal_dct_update() respectively.
+ *       functions wiced_dct_external_dct_update() and wiced_dct_internal_dct_update().
  *
  * Instructions for an application that is going to be upgraded on a system
  * built with an older SDK.
@@ -72,7 +104,6 @@
  *    ex:
  *       ./make <applicaiton>-<platform> UPDATE_FROM_SDK=3_3_1
  *  - Define the optional substructures (if used) when upgrading an SDK before SDK-3.6.x //: TODO: which rev are we releasing this update to?
- *
  *
  */
 #pragma once
@@ -508,6 +539,7 @@ typedef uint16_t wiced_dct_config_flag_t;
 
 typedef void (*dct_load_app_func_t)( void );
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
         uint32_t location;
@@ -515,6 +547,7 @@ typedef struct
 } fixed_location_t;
 
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef enum
 {
     NONE,
@@ -523,6 +556,7 @@ typedef enum
     EXTERNAL_FILESYSTEM_FILE,
 } image_location_id_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     image_location_id_t id;
@@ -534,6 +568,7 @@ typedef struct
     } detail;
 } image_location_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
         image_location_t source;
@@ -542,6 +577,7 @@ typedef struct
         char valid;
 } load_details_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
         load_details_t load_details;
@@ -549,6 +585,7 @@ typedef struct
         uint32_t entry_point;
 } boot_detail_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     char manufacturer[ 32 ];
@@ -561,6 +598,7 @@ typedef struct
     char bootloader_version[8];
 } platform_dct_mfg_info_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     char    private_key[ PRIVATE_KEY_SIZE ];
@@ -568,6 +606,7 @@ typedef struct
     uint8_t cooee_key  [ COOEE_KEY_SIZE ];
 } platform_dct_security_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     wiced_ap_info_t details;
@@ -575,6 +614,7 @@ typedef struct
     char            security_key[ SECURITY_KEY_SIZE ];
 } wiced_config_ap_entry_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     wiced_ssid_t     SSID;
@@ -585,6 +625,7 @@ typedef struct
     uint32_t         details_valid;
 } wiced_config_soft_ap_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     wiced_bool_t              device_configured;
@@ -592,16 +633,22 @@ typedef struct
     wiced_config_soft_ap_t    soft_ap_settings;
     wiced_config_soft_ap_t    config_ap_settings;
     wiced_country_code_t      country_code;
+#if defined(WICED_ENABLE_AUTO_COUNTRY)
+#error This additional field in platform_dct wifi_config_t breaks OTA2 updates - move to new structure after platform_dct_version_t
+    wiced_aggregate_code_t    aggregate_code;
+#endif
     wiced_mac_t               mac_address;
     uint8_t                   padding[2];  /* ensure 32bit aligned size */
 } platform_dct_wifi_config_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     wiced_mac_t               mac_address;
     uint8_t                   padding[2];  /* ensure 32bit aligned size */
 } platform_dct_ethernet_config_t;
 
+/* DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
 typedef struct
 {
     wiced_interface_t         interface;
@@ -610,6 +657,8 @@ typedef struct
 } platform_dct_network_config_t;
 
 /**
+ * DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING
+ *
  * If you change anything in platform_dct_bt_config_t, go back to the other
  * platform_dct_old_sdk.h files and make sure the old bt structure
  * is defined so as to allow an update to the new layout!
@@ -624,6 +673,8 @@ typedef struct
 } platform_dct_bt_config_t;
 
 /**
+ * DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING *
+ *
  * If you change anything in platform_dct_p2p_config_t, go back to the other
  * platform_dct_old_sdk.h files and make sure the old p2p structure
  * is defined so as to allow an update to the new layout!
@@ -635,6 +686,8 @@ typedef struct
 } platform_dct_p2p_config_t;
 
 /**
+ * DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING *
+ *
  * If you change anything in platform_dct_ota2_config_t, go back to the other
  * platform_dct_old_sdk.h files and make sure the old ota2 structure
  * is defined so as to allow an update to the new layout!
@@ -647,6 +700,8 @@ typedef struct
 } platform_dct_ota2_config_t;
 
 /*
+ * DO NOT ADD OR REMOVE FIELDS FROM THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING *
+ *
  * if valid, use sequence to determine current DCT
  */
 typedef struct
@@ -715,6 +770,7 @@ typedef dct_header_to_use           platform_dct_header_t;
  */
 typedef struct
 {
+/* DO NOT MOVE STRUCTURES WITHIN THIS STRUCTURE, AS IT WILL BREAK OTA2 UPDATING */
     platform_dct_header_t               dct_header;
     platform_dct_mfg_info_t             mfg_info;
     platform_dct_security_t             security_credentials;
@@ -725,6 +781,9 @@ typedef struct
     platform_dct_p2p_config_t           p2p_config;
     platform_dct_ota2_config_t          ota2_config;
     platform_dct_version_t              dct_version;
+
+    /* If you need to add anything to the DCT, add it here, in a new structure */
+
 } platform_dct_data_t;
 
 

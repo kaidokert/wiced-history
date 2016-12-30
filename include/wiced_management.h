@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -198,7 +221,7 @@ extern wiced_result_t wiced_disable_powersave( void );
 
 /** Runs device configuration (if required)
  *
- * @param[in] config  : an array of user configurable variables in configuration_entry_t format.
+ * @param[in] config  : An array of user configurable variables in configuration_entry_t format.
  *                      The array must be terminated with a "null" entry {0,0,0,0}
  *
  * @return    WICED_SUCCESS
@@ -208,7 +231,7 @@ extern wiced_result_t wiced_configure_device( const configuration_entry_t* confi
 
 /** Re-runs device configuration
  *
- * @param[in] config  : an array of user configurable variables in configuration_entry_t format.
+ * @param[in] config  : An array of user configurable variables in configuration_entry_t format.
  *                      The array must be terminated with a "null" entry {0,0,0,0}
  *
  * @return    WICED_SUCCESS
@@ -216,7 +239,6 @@ extern wiced_result_t wiced_configure_device( const configuration_entry_t* confi
 extern wiced_result_t wiced_reconfigure_device( const configuration_entry_t* config );
 
 /** @} */
-
 
 
 /*****************************************************************************/
@@ -233,7 +255,7 @@ extern wiced_result_t wiced_reconfigure_device( const configuration_entry_t* con
  *
  *  NOTE: This function will change the DCT.
  *
- * @param[in] name          : a null terminated string (Note: this will be truncated to a maximum of 32 characters)
+ * @param[in] name          : A null terminated string (Note: this will be truncated to a maximum of 32 characters)
  *
  * @return    @ref wiced_result_t
  */
@@ -241,7 +263,7 @@ extern wiced_result_t wiced_network_set_hostname( const char* name );
 
 /** Get network hostname from DCT
  *
- * @param[in] name          : a pointer to a wiced_hostname_t object to store the hostname
+ * @param[in] name          : A pointer to a wiced_hostname_t object to store the hostname
  *
  * @return    @ref wiced_result_t
  */
@@ -250,10 +272,10 @@ extern wiced_result_t wiced_network_get_hostname( wiced_hostname_t* name );
 /** Brings up a network interface
  *
  *
- * @param[in] interface     : the interface to bring up
- * @param[in] config        : the network IP configuration
- * @param[in] ip_settings   : static IP settings that are mandatory for the AP interface,
- *                        but are optional for the STA interface
+ * @param[in] interface     : The interface to bring up
+ * @param[in] config        : The network IP configuration
+ * @param[in] ip_settings   : Static IP settings that are mandatory for the AP interface,
+ *                            but are optional for the STA interface
  *
  * @return @ref wiced_result_t
  */
@@ -262,9 +284,9 @@ extern wiced_result_t wiced_network_up( wiced_interface_t interface, wiced_netwo
 
 /** Creates a network packet pool from a chunk of memory
  *
- * @param[in] memory_pointer : pointer to a chunk of memory
- * @param[in] memory_size    : size of the memory chunk
- * @param[in] direction      : network packet reception or transmission
+ * @param[in] memory_pointer : Pointer to a chunk of memory
+ * @param[in] memory_size    : Size of the memory chunk
+ * @param[in] direction      : Network packet reception or transmission
  *
  * @return @ref wiced_result_t
  */
@@ -273,7 +295,7 @@ extern wiced_result_t wiced_network_create_packet_pool( uint8_t* memory_pointer,
 
 /** Brings down a network interface
  *
- * @param[in] interface : the interface to bring down
+ * @param[in] interface : The interface to bring down
  *
  * @return @ref wiced_result_t
  */
@@ -319,7 +341,7 @@ extern wiced_result_t wiced_network_resume( void );
 
 /** Checks if a network interface is up at the 802.11 link layer
  *
- * @param[in] interface : the interface to check
+ * @param[in] interface : The interface to check
  *
  * @return @ref wiced_bool_t
  */
@@ -327,7 +349,7 @@ extern wiced_bool_t wiced_network_is_up( wiced_interface_t interface );
 
 /** Checks if a network interface is up at the IP layer
  *
- * @param[in] interface : the interface to check
+ * @param[in] interface : The interface to check
  *
  * @return @ref wiced_bool_t
  */
@@ -336,13 +358,17 @@ extern wiced_bool_t wiced_network_is_ip_up( wiced_interface_t interface );
 
 /** Reads default network interface from DCT and brings up network
  *
- * Result from reading DCT is stored in interface
+ * @param[out]              : Result from reading DCT is stored in interface
+ * @param[in] ip_settings   : Static IP settings that are mandatory for the AP interface,
+ *                            but are not used for the STA or ETHERNET interfaces.
  * @return @ref wiced_result_t
  */
 extern wiced_result_t wiced_network_up_default( wiced_interface_t* interface, const wiced_ip_setting_t* ap_ip_settings );
 
 /** Returns the default ready interface
  *
+ * @param[out] interface : Pointer to variable for returning the default ready interface.
+
  * @return @ref wiced_result_t
  */
 extern wiced_result_t wiced_get_default_ready_interface( wiced_interface_t* interface );
@@ -350,8 +376,9 @@ extern wiced_result_t wiced_get_default_ready_interface( wiced_interface_t* inte
 
 /** Register callback function/s that gets called when a change in network link status occurs
  *
- * @param link_up_callback   : the optional callback function to register for the link up event
- * @param link_down_callback : the optional callback function to register for the link down event
+ * @param[in] link_up_callback   : The optional callback function to register for the link up event
+ * @param[in] link_down_callback : The optional callback function to register for the link down event
+ * @param[in] interface          : The interface to use for registering the callbacks.
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred with any step
@@ -360,8 +387,9 @@ extern wiced_result_t wiced_network_register_link_callback( wiced_network_link_c
 
 /** De-register network link status callback function/s
  *
- * @param link_up_callback   : the optional callback function to deregister for the link up event
- * @param link_down_callback : the optional callback function to deregister for the link down event
+ * @param[in] link_up_callback   : the optional callback function to deregister for the link up event
+ * @param[in] link_down_callback : the optional callback function to deregister for the link down event
+ * @param[in] interface          : The interface to use for de-registering the callbacks.
  *
  * @return @ref wiced_result_t
  */
@@ -434,11 +462,10 @@ extern wiced_result_t wiced_resume_after_deep_sleep( void );
 
 /** Brings up a network interface after deep-sleep
  *
- *
- * @param[in] interface     : the interface to bring up
- * @param[in] config        : the network IP configuration
- * @param[in] ip_settings   : static IP settings that are mandatory for the AP interface,
- *                        but are optional for the STA interface
+ * @param[in] interface     : The interface to bring up
+ * @param[in] config        : The network IP configuration
+ * @param[in] ip_settings   : Static IP settings that are mandatory for the AP interface,
+ *                            but are optional for the STA interface
  *
  * @return @ref wiced_result_t
  */

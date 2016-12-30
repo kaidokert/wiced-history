@@ -1,11 +1,34 @@
 /**
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -140,6 +163,7 @@ static wiced_result_t bt_host_update_baudrate( uint32_t newBaudRate )
 {
     hci_event_extended_header_t hci_event;
     char update_command[ 10 ];
+    wiced_result_t result;
 
     /* format of transmit bytes for update baud rate command
      * 0x01, 0x18, 0xFC, 0x06, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff
@@ -161,9 +185,13 @@ static wiced_result_t bt_host_update_baudrate( uint32_t newBaudRate )
 
     /* Update host uart baudrate*/
     bt_uart_config.baud_rate = newBaudRate;
-    bluetooth_wiced_init_config_uart( &bt_uart_config );
+    result = bluetooth_wiced_init_config_uart( &bt_uart_config );
+    if (result != WICED_BT_SUCCESS)
+    {
+        WPRINT_LIB_ERROR(( "bt_host_update_baudrate Fail!%d\n", result));
+    }
 
-    return WICED_BT_SUCCESS;
+    return result;
 }
 
 wiced_result_t bt_firmware_download( const uint8_t* firmware_image, uint32_t size, const char* version )
@@ -257,6 +285,89 @@ wiced_result_t bt_firmware_download( const uint8_t* firmware_image, uint32_t siz
         bluetooth_wiced_init_config_uart( &bt_uart_config );
         wiced_rtos_delay_milliseconds( 10 );
     }
+
+    return bt_issue_reset( );
+}
+
+/*
+ * Temporary solution. If WiFi was enabled,
+ * BT UART baud rate change creates side effect
+ * */
+wiced_result_t bt_firmware_download_lowrate( const uint8_t* firmware_image, uint32_t size, const char* version )
+{
+    uint8_t* data = (uint8_t*) firmware_image;
+    uint32_t remaining_length = size;
+    hci_event_extended_header_t hci_event;
+
+    memcpy( &bt_uart_config, &wiced_bt_uart_config, sizeof( wiced_bt_uart_config ) );
+
+    BT_BUS_IS_READY();
+
+    /* Send 'Reset' command */
+    VERIFY_RETVAL( bt_bus_transmit( (const uint8_t* ) &hci_commands[ HCI_CMD_RESET ], sizeof(hci_command_header_t) ) );
+    VERIFY_RETVAL( bt_bus_receive( (uint8_t* ) &hci_event, sizeof( hci_event ), 1000 ) ); /* First reset command requires extra delay between write and read */
+    VERIFY_RESPONSE( &hci_event, &expected_hci_events[ HCI_CMD_RESET ], sizeof( hci_event ) );
+
+    /* Send hci_download_minidriver command */
+    if ( wiced_bt_config.patchram_download_mode == PATCHRAM_DOWNLOAD_MODE_MINIDRV_CMD )
+    {
+        VERIFY_RETVAL( bt_bus_transmit( (const uint8_t* ) &hci_commands[ HCI_CMD_DOWNLOAD_MINIDRIVER ], sizeof(hci_command_header_t) ) );
+        VERIFY_RETVAL( bt_bus_receive( (uint8_t*) &hci_event, sizeof( hci_event ), DEFAULT_READ_TIMEOUT ) );
+        VERIFY_RESPONSE( &hci_event, &expected_hci_events[ HCI_CMD_DOWNLOAD_MINIDRIVER ], sizeof( hci_event ) );
+    }
+
+    /* The firmware image (.hcd format) contains a collection of hci_write_ram command + a block of the image,
+     * followed by a hci_write_ram image at the end. Parse and send each individual command and wait for the response.
+     * This is to ensure the integrity of the firmware image sent to the bluetooth chip.
+     */
+    while ( remaining_length )
+    {
+        uint32_t data_length = data[ 2 ] + 3; /* content of data length + 2 bytes of opcode and 1 byte of data length */
+        uint8_t residual_data = 0;
+        hci_command_opcode_t command_opcode = *(hci_command_opcode_t*) data;
+        uint8_t temp_data[ 256 ];
+
+        memset( &hci_event, 0, sizeof( hci_event ) );
+        memset( temp_data, 0, sizeof( temp_data ) );
+
+        /* 43438 requires the packet type before each write RAM command */
+        temp_data[ 0 ] = HCI_COMMAND_PACKET;
+        memcpy( &temp_data[ 1 ], data, data_length );
+
+        /* Send hci_write_ram command. The length of the data immediately follows the command opcode */VERIFY_RETVAL( bt_bus_transmit( (const uint8_t* ) temp_data, data_length + 1 ) );
+        VERIFY_RETVAL( bt_bus_receive( (uint8_t*) &hci_event, sizeof(hci_event), DEFAULT_READ_TIMEOUT ) );
+
+        switch ( command_opcode )
+        {
+            case HCI_CMD_OPCODE_WRITE_RAM:
+                VERIFY_RESPONSE( &hci_event, &expected_hci_events[ HCI_CMD_WRITE_RAM ], sizeof( hci_event ) )
+                ;
+
+                /* Update remaining length and data pointer */
+                data += data_length;
+                remaining_length -= data_length;
+                break;
+
+            case HCI_CMD_OPCODE_LAUNCH_RAM:
+                VERIFY_RESPONSE( &hci_event, &expected_hci_events[ HCI_CMD_LAUNCH_RAM ], sizeof( hci_event ) )
+                ;
+
+                /* All responses have been read. Now let's flush residual data if any and reset remaining length */
+                while ( bt_bus_receive( &residual_data, sizeof( residual_data ), DEFAULT_READ_TIMEOUT ) == WICED_SUCCESS )
+                {
+                }
+
+                remaining_length = 0;
+
+                break;
+
+            default:
+                return WICED_BT_UNKNOWN_PACKET;
+        }
+    }
+
+    /* Wait for bluetooth chip to pull its RTS (host's CTS) low. From observation using CRO, it takes the bluetooth chip > 170ms to pull its RTS low after CTS low */
+    BT_BUS_WAIT_UNTIL_READY();
 
     return bt_issue_reset( );
 }

@@ -2,7 +2,7 @@
  * net/socket/net_sendfile.c
  *
  *   Copyright (C) 2013 UVC Ingenieure. All rights reserved.
- *   Copyright (C) 2007-2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2016 Gregory Nutt. All rights reserved.
  *   Authors: Gregory Nutt <gnutt@nuttx.org>
  *            Max Holtzberg <mh@uvc.de>
  *
@@ -103,7 +103,7 @@ struct sendfile_s
   uint32_t           snd_isn;     /* Initial sequence number */
   uint32_t           snd_acked;   /* The number of bytes acked */
 #ifdef CONFIG_NET_SOCKOPTS
-  uint32_t           snd_time;    /* Last send time for determining timeout */
+  systime_t          snd_time;    /* Last send time for determining timeout */
 #endif
 };
 
@@ -118,7 +118,7 @@ struct sendfile_s
  *   Check for send timeout.
  *
  * Parameters:
- *   pstate   send state structure
+ *   pstate - send state structure
  *
  * Returned Value:
  *   TRUE:timeout FALSE:no timeout
@@ -151,8 +151,8 @@ static inline int sendfile_timeout(FAR struct sendfile_s *pstate)
 }
 #endif /* CONFIG_NET_SOCKOPTS */
 
-static uint16_t ack_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
-                              FAR void *pvpriv, uint16_t flags)
+static uint32t ack_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
+                              FAR void *pvpriv, uint32_t flags)
 {
   FAR struct sendfile_s *pstate = (FAR struct sendfile_s *)pvpriv;
 
@@ -196,7 +196,7 @@ static uint16_t ack_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
        * is the number of bytes to be acknowledged.
        */
 
-      pstate->snd_acked = tcp_getsequence(TCPBUF->ackno) - pstate->snd_isn;
+      pstate->snd_acked = tcp_getsequence(tcp->ackno) - pstate->snd_isn;
       nllvdbg("ACK: acked=%d sent=%d flen=%d\n",
              pstate->snd_acked, pstate->snd_sent, pstate->snd_flen);
 
@@ -217,7 +217,7 @@ static uint16_t ack_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
 
   /* Check for a loss of connection */
 
-  else if ((flags & (TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT)) != 0)
+  else if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
       /* Report not connected */
 
@@ -317,19 +317,31 @@ static inline bool sendfile_addrcheck(FAR struct tcp_conn_s *conn)
  *
  ****************************************************************************/
 
-static uint16_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
-                                   FAR void *pvpriv, uint16_t flags)
+static uint32_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvconn,
+                                   FAR void *pvpriv, uint32_t flags)
 {
   FAR struct tcp_conn_s *conn = (FAR struct tcp_conn_s*)pvconn;
   FAR struct sendfile_s *pstate = (FAR struct sendfile_s *)pvpriv;
   int ret;
+
+#ifdef CONFIG_NETDEV_MULTINIC
+  /* The TCP socket is connected and, hence, should be bound to a device.
+   * Make sure that the polling device is the own that we are bound to.
+   */
+
+  DEBUGASSERT(conn->dev != NULL);
+  if (dev != conn->dev)
+    {
+      return flags;
+    }
+#endif
 
   nllvdbg("flags: %04x acked: %d sent: %d\n",
           flags, pstate->snd_acked, pstate->snd_sent);
 
   /* Check for a loss of connection */
 
-  if ((flags & (TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT)) != 0)
+  if ((flags & TCP_DISCONN_EVENTS) != 0)
     {
       /* Report not connected */
 
@@ -354,9 +366,9 @@ static uint16_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvcon
 
       uint32_t sndlen = pstate->snd_flen - pstate->snd_sent;
 
-      if (sndlen > tcp_mss(conn))
+      if (sndlen > conn->mss)
         {
-          sndlen = tcp_mss(conn);
+          sndlen = conn->mss;
         }
 
       /* Check if we have "space" in the window */
@@ -373,7 +385,7 @@ static uint16_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvcon
                           pstate->snd_foffset + pstate->snd_sent, SEEK_SET);
           if (ret < 0)
             {
-              int errcode = errno;
+              int errcode = get_errno();
               nlldbg("failed to lseek: %d\n", errcode);
               pstate->snd_sent = -errcode;
               goto end_wait;
@@ -382,7 +394,7 @@ static uint16_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvcon
           ret = file_read(pstate->snd_file, dev->d_appdata, sndlen);
           if (ret < 0)
             {
-              int errcode = errno;
+              int errcode = get_errno();
               nlldbg("failed to read from input file: %d\n", errcode);
               pstate->snd_sent = -errcode;
               goto end_wait;
@@ -390,7 +402,7 @@ static uint16_t sendfile_interrupt(FAR struct net_driver_s *dev, FAR void *pvcon
 
           dev->d_sndlen = sndlen;
 
-          /* Set the sequence number for this packet.  NOTE:  uIP updates
+          /* Set the sequence number for this packet.  NOTE:  The network updates
            * sndseq on recept of ACK *before* this function is called.  In that
            * case sndseq will point to the next unacknowledge byte (which might
            * have already been sent).  We will overwrite the value of sndseq
@@ -707,9 +719,8 @@ ssize_t net_sendfile(int outfd, struct file *infile, off_t *offset,
 
   /* Set up the ACK callback in the connection */
 
-  state.snd_ackcb->flags = (TCP_ACKDATA | TCP_REXMIT | TCP_CLOSE |
-                            TCP_ABORT | TCP_TIMEDOUT);
-  state.snd_ackcb->priv  = (void*)&state;
+  state.snd_ackcb->flags = (TCP_ACKDATA | TCP_REXMIT | TCP_DISCONN_EVENTS);
+  state.snd_ackcb->priv  = (FAR void *)&state;
   state.snd_ackcb->event = ack_interrupt;
 
   /* Perform the TCP send operation */
@@ -717,7 +728,7 @@ ssize_t net_sendfile(int outfd, struct file *infile, off_t *offset,
   do
     {
       state.snd_datacb->flags = TCP_POLL;
-      state.snd_datacb->priv  = (void*)&state;
+      state.snd_datacb->priv  = (FAR void *)&state;
       state.snd_datacb->event = sendfile_interrupt;
 
       /* Notify the device driver of the availability of TX data */

@@ -86,22 +86,22 @@ struct icmpv6_ping_s
   FAR struct devif_callback_s *png_cb; /* Reference to callback instance */
 
   sem_t          png_sem;     /* Use to manage the wait for the response */
-  uint32_t       png_time;    /* Start time for determining timeouts */
-  uint32_t       png_ticks;   /* System clock ticks to wait */
+  systime_t      png_time;    /* Start time for determining timeouts */
+  systime_t      png_ticks;   /* System clock ticks to wait */
   int            png_result;  /* 0: success; <0:negated errno on fail */
   net_ipv6addr_t png_addr;    /* The peer to be ping'ed */
   uint16_t       png_id;      /* Used to match requests with replies */
-  uint16_t       png_seqno;   /* IN: seqno to send; OUT: seqno recieved */
+  uint16_t       png_seqno;   /* IN: seqno to send; OUT: seqno received */
   uint16_t       png_datlen;  /* The length of data to send in the ECHO request */
   bool           png_sent;    /* true... the PING request has been sent */
 };
 
 /****************************************************************************
- * Public Variables
+ * Public Data
  ****************************************************************************/
 
 /****************************************************************************
- * Private Variables
+ * Private Data
  ****************************************************************************/
 
 /****************************************************************************
@@ -127,7 +127,7 @@ struct icmpv6_ping_s
 
 static inline int ping_timeout(FAR struct icmpv6_ping_s *pstate)
 {
-  uint32_t elapsed =  clock_systimer() - pstate->png_time;
+  systime_t elapsed =  clock_systimer() - pstate->png_time;
   if (elapsed >= pstate->png_ticks)
     {
       return TRUE;
@@ -248,8 +248,8 @@ static void icmpv6_echo_request(FAR struct net_driver_s *dev,
  *
  ****************************************************************************/
 
-static uint16_t ping_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
-                               FAR void *pvpriv, uint16_t flags)
+static uint32_t ping_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
+                               FAR void *pvpriv, uint32_t flags)
 {
   FAR struct icmpv6_ping_s *pstate = (struct icmpv6_ping_s *)pvpriv;
 
@@ -257,13 +257,22 @@ static uint16_t ping_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
 
   if (pstate)
     {
+      /* Check if the network is still up */
+
+      if ((flags & NETDEV_DOWN) != 0)
+        {
+          nlldbg("ERROR: Interface is down\n");
+          pstate->png_result = -ENETUNREACH;
+          goto end_wait;
+        }
+
       /* Check if this is a ICMPv6 ECHO reply.  If so, return the sequence
        * number to the caller.  NOTE: We may not even have sent the
        * requested ECHO request; this could have been the delayed ECHO
        * response from a previous ping.
        */
 
-      if ((flags & ICMPv6_ECHOREPLY) != 0 && conn != NULL)
+      else if ((flags & ICMPv6_ECHOREPLY) != 0 && conn != NULL)
         {
           FAR struct icmpv6_echo_reply_s *reply = ICMPv6ECHOREPLY;
 
@@ -396,6 +405,7 @@ end_wait:
 int icmpv6_ping(net_ipv6addr_t addr, uint16_t id, uint16_t seqno,
                 uint16_t datalen, int dsecs)
 {
+  FAR struct net_driver_s *dev;
   struct icmpv6_ping_s state;
   net_lock_t save;
 
@@ -411,6 +421,19 @@ int icmpv6_ping(net_ipv6addr_t addr, uint16_t id, uint16_t seqno,
       return -ENETUNREACH;
     }
 #endif /* CONFIG_NET_ICMPv6_NEIGHBOR */
+
+  /* Get the device that will be used to route this ICMP ECHO request */
+
+#ifdef CONFIG_NETDEV_MULTINIC
+  dev = netdev_findby_ipv6addr(g_ipv6_allzeroaddr, addr);
+#else
+  dev = netdev_findby_ipv6addr(addr);
+#endif
+  if (dev == 0)
+    {
+      ndbg("ERROR: Not reachable\n");
+      return -ENETUNREACH;
+    }
 
   /* Initialize the state structure */
 
@@ -429,21 +452,17 @@ int icmpv6_ping(net_ipv6addr_t addr, uint16_t id, uint16_t seqno,
 
   /* Set up the callback */
 
-  state.png_cb = icmpv6_callback_alloc();
+  state.png_cb = icmpv6_callback_alloc(dev);
   if (state.png_cb)
     {
       state.png_cb->flags   = (ICMPv6_POLL | ICMPv6_ECHOREPLY);
-      state.png_cb->priv    = (void*)&state;
+      state.png_cb->priv    = (FAR void *)&state;
       state.png_cb->event   = ping_interrupt;
       state.png_result      = -EINTR; /* Assume sem-wait interrupted by signal */
 
       /* Notify the device driver of the availability of TX data */
 
-#ifdef CONFIG_NETDEV_MULTINIC
-      netdev_ipv6_txnotify(g_ipv6_allzeroaddr, state.png_addr);
-#else
-      netdev_ipv6_txnotify(state.png_addr);
-#endif
+      netdev_txnotify_dev(dev);
 
       /* Wait for either the full round trip transfer to complete or
        * for timeout to occur. (1) net_lockedwait will also terminate if a
@@ -455,7 +474,7 @@ int icmpv6_ping(net_ipv6addr_t addr, uint16_t id, uint16_t seqno,
       nllvdbg("Start time: 0x%08x seqno: %d\n", state.png_time, seqno);
       net_lockedwait(&state.png_sem);
 
-      icmpv6_callback_free(state.png_cb);
+      icmpv6_callback_free(dev, state.png_cb);
     }
 
   net_unlock(save);

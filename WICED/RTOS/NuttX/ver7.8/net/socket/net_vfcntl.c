@@ -53,10 +53,6 @@
 #if defined(CONFIG_NET) && CONFIG_NSOCKET_DESCRIPTORS > 0
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -280,9 +276,10 @@ int net_vfcntl(int sockfd, int cmd, va_list ap)
 errout:
   if (err != 0)
     {
-      errno = err;
+      set_errno(err);
       return ERROR;
     }
+
   return ret;
 }
 

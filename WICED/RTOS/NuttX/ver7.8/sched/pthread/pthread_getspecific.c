@@ -104,12 +104,9 @@
 FAR void *pthread_getspecific(pthread_key_t key)
 {
 #if CONFIG_NPTHREAD_KEYS > 0
-  FAR struct pthread_tcb_s *rtcb = (FAR struct pthread_tcb_s*)g_readytorun.head;
-  FAR struct task_group_s *group = rtcb->cmn.group;
+  FAR struct tcb_s *tcb = (FAR struct tcb_s*)g_readytorun.head;
+  FAR struct task_group_s *group = tcb->group;
   FAR void *ret = NULL;
-
-  DEBUGASSERT(group &&
-              (rtcb->cmn.flags & TCB_FLAG_TTYPE_MASK) == TCB_FLAG_TTYPE_PTHREAD);
 
   /* Check if the key is valid. */
 
@@ -117,7 +114,7 @@ FAR void *pthread_getspecific(pthread_key_t key)
     {
       /* Return the stored value. */
 
-      ret = rtcb->pthread_data[key];
+      ret = group->pthread_data[key];
     }
 
   return ret;

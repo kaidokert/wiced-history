@@ -61,21 +61,69 @@
 #include "tcp/tcp.h"
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Public Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
  * Private Functions
  ****************************************************************************/
+static void tcp_parse_options(FAR struct net_driver_s *dev,
+                              FAR struct tcp_conn_s *conn,
+                              unsigned int iplen)
+{
+  uint8_t  opt;
+  int i;
+  uint16_t tmp16;
+  unsigned int hdrlen = iplen + TCP_HDRLEN + NET_LL_HDRLEN(dev);
+  FAR struct tcp_hdr_s *tcp =
+          (FAR struct tcp_hdr_s *)&dev->d_buf[iplen + NET_LL_HDRLEN(dev)];
 
+  /* Parse the TCP MSS option, if present. */
+
+  if ((tcp->tcpoffset & 0xf0) > 0x50)
+    {
+      for (i = 0; i < ((tcp->tcpoffset >> 4) - 5) << 2 ;)
+        {
+          opt = dev->d_buf[hdrlen + i];
+          if (opt == TCP_OPT_END)
+            {
+              /* End of options. */
+               break;
+            }
+          else if (opt == TCP_OPT_NOOP)
+            {
+              /* NOP option. */
+               ++i;
+            }
+          else if (opt == TCP_OPT_MSS &&
+                dev->d_buf[hdrlen + 1 + i] == TCP_OPT_MSS_LEN)
+            {
+              uint16_t tcp_mss = TCP_MSS(dev, iplen);
+
+              /* An MSS option with the right option length. */
+
+              tmp16 = ((uint16_t)dev->d_buf[hdrlen + 2 + i] << 8) |
+                       (uint16_t)dev->d_buf[hdrlen + 3 + i];
+              conn->mss = tmp16 > tcp_mss ? tcp_mss : tmp16;
+
+              nllvdbg("updated tcp conn=0x%p mss=%u\n", conn, conn->mss);
+              /* And we are done processing options. */
+              break;
+            }
+          else
+            {
+              /* All other options have a length field, so that we easily
+               * can skip past them.
+               */
+              if (dev->d_buf[hdrlen + 1 + i] == 0)
+                {
+                  /* If the length field is zero, the options are malformed
+                   * and we don't process them further.
+                   */
+
+                  break;
+                }
+              i += dev->d_buf[hdrlen + 1 + i];
+            }
+        }
+    }
+}
 /****************************************************************************
  * Name: tcp_input
  *
@@ -100,13 +148,10 @@ static void tcp_input(FAR struct net_driver_s *dev, unsigned int iplen)
   FAR struct tcp_hdr_s *tcp;
   FAR struct tcp_conn_s *conn = NULL;
   unsigned int tcpiplen;
-  unsigned int hdrlen;
   uint16_t tmp16;
-  uint16_t flags;
-  uint8_t  opt;
-  uint8_t  result;
+  uint32_t flags;
+  uint32_t result;
   int      len;
-  int      i;
 
 #ifdef CONFIG_NET_STATISTICS
   /* Bump up the count of TCP packets received */
@@ -123,10 +168,6 @@ static void tcp_input(FAR struct net_driver_s *dev, unsigned int iplen)
   /* Get the size of the IP header and the TCP header */
 
   tcpiplen = iplen + TCP_HDRLEN;
-
-  /* Get the size of the link layer header, the IP header, and the TCP header */
-
-  hdrlen = tcpiplen + NET_LL_HDRLEN(dev);
 
   /* Start of TCP input header processing code. */
 
@@ -164,7 +205,7 @@ static void tcp_input(FAR struct net_driver_s *dev, unsigned int iplen)
         }
     }
 
-  /* If we didn't find and active connection that expected the packet,
+  /* If we didn't find an active connection that expected the packet,
    * either (1) this packet is an old duplicate, or (2) this is a SYN packet
    * destined for a connection in LISTEN. If the SYN flag isn't set,
    * it is an old packet and we send a RST.
@@ -195,12 +236,11 @@ static void tcp_input(FAR struct net_driver_s *dev, unsigned int iplen)
                * there is an application waiting to accept the connection (or at
                * least queue it it for acceptance).
                */
-
+              
               conn->crefs = 1;
               if (tcp_accept_connection(dev, conn, tmp16) != OK)
                 {
                   /* No, then we have to give the connection back and drop the packet */
-
                   conn->crefs = 0;
                   tcp_free(conn);
                   conn = NULL;
@@ -225,57 +265,7 @@ static void tcp_input(FAR struct net_driver_s *dev, unsigned int iplen)
           net_incr32(conn->rcvseq, 1);
 
           /* Parse the TCP MSS option, if present. */
-
-          if ((tcp->tcpoffset & 0xf0) > 0x50)
-            {
-              for (i = 0; i < ((tcp->tcpoffset >> 4) - 5) << 2 ;)
-                {
-                  opt = dev->d_buf[hdrlen + i];
-                  if (opt == TCP_OPT_END)
-                    {
-                      /* End of options. */
-
-                      break;
-                    }
-                  else if (opt == TCP_OPT_NOOP)
-                    {
-                      /* NOP option. */
-
-                      ++i;
-                    }
-                  else if (opt == TCP_OPT_MSS &&
-                          dev->d_buf[hdrlen + 1 + i] == TCP_OPT_MSS_LEN)
-                    {
-                      uint16_t tcp_mss = TCP_MSS(dev, iplen);
-
-                      /* An MSS option with the right option length. */
-
-                      tmp16 = ((uint16_t)dev->d_buf[hdrlen + 2 + i] << 8) |
-                               (uint16_t)dev->d_buf[hdrlen + 3 + i];
-                      conn->mss = tmp16 > tcp_mss ? tcp_mss : tmp16;
-
-                      /* And we are done processing options. */
-
-                      break;
-                    }
-                  else
-                    {
-                      /* All other options have a length field, so that we easily
-                       * can skip past them.
-                       */
-
-                      if (dev->d_buf[hdrlen + 1 + i] == 0)
-                        {
-                          /* If the length field is zero, the options are malformed
-                           * and we don't process them further.
-                           */
-
-                          break;
-                        }
-                      i += dev->d_buf[hdrlen + 1 + i];
-                    }
-                }
-            }
+          tcp_parse_options(dev, conn, iplen);
 
           /* Our response will be a SYNACK. */
 
@@ -388,7 +378,7 @@ found:
       ackseq = tcp_getsequence(tcp->ackno);
 
       /* Check how many of the outstanding bytes have been acknowledged. For
-       * a most uIP send operation, this should always be true.  However,
+       * most send operations, this should always be true.  However,
        * the send() API sends data ahead when it can without waiting for
        * the ACK.  In this case, the 'ackseq' could be less than then the
        * new sequence number.
@@ -519,57 +509,8 @@ found:
           {
             /* Parse the TCP MSS option, if present. */
 
-            if ((tcp->tcpoffset & 0xf0) > 0x50)
-              {
-                for (i = 0; i < ((tcp->tcpoffset >> 4) - 5) << 2 ;)
-                  {
-                    opt = dev->d_buf[hdrlen + i];
-                    if (opt == TCP_OPT_END)
-                      {
-                        /* End of options. */
+            tcp_parse_options(dev, conn, iplen);
 
-                        break;
-                      }
-                    else if (opt == TCP_OPT_NOOP)
-                      {
-                        /* NOP option. */
-
-                        ++i;
-                      }
-                    else if (opt == TCP_OPT_MSS &&
-                              dev->d_buf[hdrlen + 1 + i] == TCP_OPT_MSS_LEN)
-                      {
-                        uint16_t tcp_mss = TCP_MSS(dev, iplen);
-
-                        /* An MSS option with the right option length. */
-
-                        tmp16 =
-                          (dev->d_buf[hdrlen + 2 + i] << 8) |
-                          dev->d_buf[hdrlen + 3 + i];
-                        conn->mss = tmp16 > tcp_mss ? tcp_mss : tmp16;
-
-                        /* And we are done processing options. */
-
-                        break;
-                      }
-                    else
-                      {
-                        /* All other options have a length field, so that we
-                         * easily can skip past them.
-                         */
-
-                        if (dev->d_buf[hdrlen + 1 + i] == 0)
-                          {
-                            /* If the length field is zero, the options are
-                             * malformed and we don't process them further.
-                             */
-
-                            break;
-                          }
-                        i += dev->d_buf[hdrlen + 1 + i];
-                      }
-                  }
-              }
 
             conn->tcpstateflags = TCP_ESTABLISHED;
             memcpy(conn->rcvseq, tcp->seqno, 4);
@@ -684,7 +625,8 @@ found:
           {
             dev->d_urglen   = 0;
 #else /* CONFIG_NET_TCPURGDATA */
-            dev->d_appdata  = ((uint8_t*)dev->d_appdata) + ((tcp->urgp[0] << 8) | tcp->urgp[1]);
+            dev->d_appdata  = ((FAR uint8_t *)dev->d_appdata) + ((tcp->urgp[0] << 8) |
+                               tcp->urgp[1]);
             dev->d_len     -= (tcp->urgp[0] << 8) | tcp->urgp[1];
 #endif /* CONFIG_NET_TCPURGDATA */
           }
@@ -727,7 +669,6 @@ found:
 
             dev->d_sndlen = 0;
             len           = dev->d_len;
-
             /* Provide the packet to the application */
 
             result = tcp_callback(dev, conn, flags);

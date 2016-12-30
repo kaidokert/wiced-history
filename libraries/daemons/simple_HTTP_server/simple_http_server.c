@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -194,6 +217,7 @@ static wiced_result_t http_server_process_packet(const wiced_http_page_t* page_d
     uint16_t request_length;
     char* start_of_url;
     char* end_of_url;
+    char *url = NULL;
     wiced_result_t result = WICED_ERROR;
     uint16_t orig_url_length;
     uint16_t new_url_length;
@@ -254,7 +278,19 @@ static wiced_result_t http_server_process_packet(const wiced_http_page_t* page_d
         /* Set the "extra" characters to null  */
         memset( start_of_url + new_url_length, '\x00', (size_t) ( orig_url_length - new_url_length ) );
     }
-    process_url_request( (wiced_tcp_socket_t*)socket, page_database, start_of_url, new_url_length );
+    /* Function process_url_request modifies the URL that is passed.
+    Hence copying the URL string to a temp buffer */
+    /* Allocate new_url_length + 1 for null-termination */
+    url = malloc_named( "http server", (size_t)(new_url_length+1));
+    if (url == NULL)
+    {
+       return WICED_ERROR;
+    }
+    /* 'null' terminate the URL */
+    memcpy(url, start_of_url, new_url_length);
+    url[new_url_length] = '\0';
+    process_url_request( (wiced_tcp_socket_t*)socket, page_database, url, new_url_length );
+    free( url );
 
     result = WICED_SUCCESS;
 
@@ -302,7 +338,6 @@ static wiced_result_t process_url_request( wiced_tcp_socket_t* socket, const wic
     {
         params = NULL;
     }
-
     WPRINT_WEBSERVER_DEBUG(("Processing request for: %s\n", url));
 
     /* Init the tcp stream */

@@ -1,18 +1,42 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 #ifndef INCLUDED_WWD_DEBUG_H
 #define INCLUDED_WWD_DEBUG_H
 
-#include "wiced_defaults.h"
 #include <stdio.h>
+#include "wiced_defaults.h"
+#include "wwd_constants.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -215,7 +239,6 @@ int platform_wprint_permission(void);
 #endif
 
 
-
 /* WICED printing macros for Wiced Wi-Fi Driver*/
 #ifdef WPRINT_ENABLE_WWD_INFO
     #define WPRINT_WWD_INFO(args) WPRINT_MACRO(args)
@@ -232,7 +255,41 @@ int platform_wprint_permission(void);
 #else
     #define WPRINT_WWD_ERROR(args) { WICED_BREAK_IF_DEBUG(); }
 #endif
+#ifdef WPRINT_ENABLE_WWD_IOCTL
+    #define WPRINT_WWD_IOCTL(args) { WPRINT_MACRO(args); }
+#else
+    #define WPRINT_WWD_IOCTL(args)
+#endif
 
+#ifdef WWD_ENABLE_STATS
+
+#define WWD_STATS_INCREMENT_VARIABLE( var )                            \
+    do { wwd_stats.var++; } while ( 0 )
+
+#define WWD_STATS_CONDITIONAL_INCREMENT_VARIABLE( condition, var )     \
+    do { if (condition) { wwd_stats.var++; }} while ( 0 )
+
+typedef struct
+{
+    uint32_t tx_total;      /* Total number of TX packets sent from WWD */
+    uint32_t rx_total;      /* Total number of RX packets received at WWD */
+    uint32_t tx_no_mem;     /* Number of times WWD could not send due to no buffer */
+    uint32_t rx_no_mem;     /* Number of times WWD could not receive due to no buffer */
+    uint32_t tx_fail;       /* Number of times TX packet failed */
+    uint32_t no_credit;     /* Number of times WWD could not send due to no credit */
+    uint32_t flow_control;  /* Number of times WWD Flow control is enabled */
+} wwd_stats_t;
+extern wwd_stats_t wwd_stats;
+
+#else /* WWD_ENABLE_STATS */
+
+#define WWD_STATS_INCREMENT_VARIABLE( var )
+#define WWD_STATS_CONDITIONAL_INCREMENT_VARIABLE( condition, var )
+
+#endif /* WWD_ENABLE_STATS */
+
+extern void wwd_init_stats ( void );
+extern wwd_result_t wwd_print_stats ( wiced_bool_t reset_after_print );
 
 #ifdef __cplusplus
 } /* extern "C" */

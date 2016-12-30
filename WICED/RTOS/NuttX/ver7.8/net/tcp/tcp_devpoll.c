@@ -2,7 +2,7 @@
  * net/tcp/tcp_devpoll.c
  * Driver poll for the availability of TCP TX data
  *
- *   Copyright (C) 2007-2009 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Adapted for NuttX from logic in uIP which also has a BSD-like license:
@@ -56,22 +56,6 @@
 #include "tcp/tcp.h"
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Public Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -89,57 +73,64 @@
  *   None
  *
  * Assumptions:
- *   Called from the interrupt level or with interrupts disabled.
+ *   Called with the network locked.
  *
  ****************************************************************************/
 
 void tcp_poll(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn)
 {
-  uint8_t result;
+  uint32_t result;
 
-  /* Verify that the connection is established */
+  /* Discard any currently buffered data */
+
+  dev->d_len     = 0;
+  dev->d_sndlen  = 0;
+
+  /* Verify that the connection is established. */
 
   if ((conn->tcpstateflags & TCP_STATE_MASK) == TCP_ESTABLISHED)
     {
-      /* Set up for the callback.  We can't know in advance if the application
-       * is going to send a IPv4 or an IPv6 packet, so this setup may not
-       * actually be used.
+#ifdef CONFIG_NETDEV_MULTINIC
+      /* The TCP connection is established and, hence, should be bound
+       * to a device. Make sure that the polling device is the one that
+       * we are bound to.
        */
+
+      DEBUGASSERT(conn->dev != NULL);
+      if (dev == conn->dev)
+#endif
+        {
+          /* Set up for the callback.  We can't know in advance if the
+           * application is going to send a IPv4 or an IPv6 packet, so this
+           * setup may not actually be used.
+           */
 
 #ifdef CONFIG_NET_IPv4
 #ifdef CONFIG_NET_IPv6
-    if (conn->domain == PF_INET)
+          if (conn->domain == PF_INET)
 #endif
-      {
-        tcp_ipv4_select(dev);
-      }
+            {
+              tcp_ipv4_select(dev);
+            }
 #endif /* CONFIG_NET_IPv4 */
 
 #ifdef CONFIG_NET_IPv6
 #ifdef CONFIG_NET_IPv4
-    else
+          else
 #endif
-      {
-        tcp_ipv6_select(dev);
-      }
+            {
+              tcp_ipv6_select(dev);
+            }
 #endif /* CONFIG_NET_IPv6 */
 
-      dev->d_len     = 0;
-      dev->d_sndlen  = 0;
+          /* Perform the callback */
 
-      /* Perform the callback */
+          result = tcp_callback(dev, conn, TCP_POLL);
 
-      result = tcp_callback(dev, conn, TCP_POLL);
+          /* Handle the callback response */
 
-      /* Handle the callback response */
-
-      tcp_appsend(dev, conn, result);
-    }
-  else
-    {
-      /* Nothing to do for this connection */
-
-      dev->d_len = 0;
+          tcp_appsend(dev, conn, result);
+        }
     }
 }
 

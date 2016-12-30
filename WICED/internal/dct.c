@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -106,6 +129,19 @@ extern const void * const dct_used_size_loc; /* Defined by linker script */
 #define WICED_NETWORK_INTERFACE   WICED_STA_INTERFACE
 #endif
 
+#if defined(CLIENT_AP_2_SSID)
+#define DEFAULT_AP_LIST_ENTRY_2 \
+    [1] = \
+    {     \
+        .details = {{sizeof(CLIENT_AP_2_SSID)-1, CLIENT_AP_2_SSID},{{0,0,0,0,0,0}}, 0, 0, CLIENT_AP_2_BSS_TYPE, CLIENT_AP_2_SECURITY, CLIENT_AP_2_CHANNEL, CLIENT_AP_2_BAND}, \
+        .security_key_length = sizeof(CLIENT_AP_2_PASSPHRASE)-1, \
+        .security_key = CLIENT_AP_2_PASSPHRASE \
+    },
+
+#else
+#define DEFAULT_AP_LIST_ENTRY_2
+#endif
+
 #define DEFAULT_AP_LIST  \
     { \
         [0] = \
@@ -114,6 +150,7 @@ extern const void * const dct_used_size_loc; /* Defined by linker script */
             .security_key_length = sizeof(CLIENT_AP_PASSPHRASE)-1, \
             .security_key = CLIENT_AP_PASSPHRASE\
         }, \
+        DEFAULT_AP_LIST_ENTRY_2 \
     }
 
 #if defined ( __IAR_SYSTEMS_ICC__ )
@@ -130,7 +167,7 @@ static const platform_dct_data_t initial_dct =
     .dct_header.used_size            = (unsigned long)&dct_used_size_loc,
 #endif
     .dct_header.magic_number         = BOOTLOADER_MAGIC_NUMBER,
-    .dct_header.write_incomplete     = 0,
+    .dct_header.write_incomplete     = 0,                       /* Always 0x00 on first write of DCT */
     .dct_header.app_valid            = 1,
     .dct_header.mfg_info_programmed  = 0,
 #if  defined(DCT_BOOTLOADER_CRC_IS_IN_HEADER)
@@ -138,7 +175,7 @@ static const platform_dct_data_t initial_dct =
     .dct_header.crc32                = 0,
     .dct_header.initial_write        = 1,
 #else
-    .dct_header.is_current_dct       = 1,
+    .dct_header.is_current_dct       = 1,                       /* Always 0x01 on first write of DCT */
 #endif
     .dct_header.apps_locations[ DCT_FR_APP_INDEX ].id       = EXTERNAL_FIXED_LOCATION,
     .dct_header.apps_locations[ DCT_DCT_IMAGE_INDEX ].id    = EXTERNAL_FIXED_LOCATION,
@@ -195,6 +232,16 @@ static const platform_dct_data_t initial_dct =
 #else
     .wifi_config.country_code        = WICED_DEFAULT_COUNTRY_CODE,
 #endif
+
+#if defined(WICED_ENABLE_AUTO_COUNTRY)
+#error This additional field in platform_dct wifi_config_t breaks OTA2 updates - move to new structure after platform_dct_version_t
+#ifdef WICED_COUNTRY_AGGREGATE_CODE
+    .wifi_config.aggregate_code      = WICED_COUNTRY_AGGREGATE_CODE,
+#else
+    .wifi_config.aggregate_code      = WICED_DEFAULT_COUNTRY_AGGREGATE_CODE,
+#endif /* WICED_AGGREGATE_CODE */
+#endif
+
 #ifdef DCT_GENERATED_MAC_ADDRESS
     .wifi_config.mac_address.octet     = DCT_GENERATED_MAC_ADDRESS,
 #endif
@@ -225,9 +272,9 @@ static const platform_dct_data_t initial_dct =
     .ota2_config.boot_type             = 0,
     .ota2_config.force_factory_reset   = 0,
 
-    .dct_version.crc32                      = 0,
+    .dct_version.crc32                      = 0,    /* Always 0x00 on first write of the DCT */
     .dct_version.sequence                   = 1,
-    .dct_version.initial_write              = 1,
+    .dct_version.initial_write              = 1,    /* Always 0x01 on the initial write of the DCT */
     .dct_version.version                    = DCT_BOOTLOADER_SDK_CURRENT,
     .dct_version.magic_number               = DCT_VERSION_MAGIC_NUMBER,
     .dct_version.data_dct_usage_flags       = WICED_DCT_CONFIG_FLAGS,

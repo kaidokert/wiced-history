@@ -57,7 +57,6 @@
 #include "devif/devif.h"
 #include "neighbor/neighbor.h"
 #include "icmpv6/icmpv6.h"
-#include "route/route.h"
 
 #ifdef CONFIG_NET_ICMPv6_NEIGHBOR
 
@@ -98,9 +97,9 @@ struct icmpv6_neighbor_s
  * Name: icmpv6_neighbor_interrupt
  ****************************************************************************/
 
-static uint16_t icmpv6_neighbor_interrupt(FAR struct net_driver_s *dev,
+static uint32_t icmpv6_neighbor_interrupt(FAR struct net_driver_s *dev,
                                           FAR void *pvconn,
-                                          FAR void *priv, uint16_t flags)
+                                          FAR void *priv, uint32_t flags)
 {
   FAR struct icmpv6_neighbor_s *state = (FAR struct icmpv6_neighbor_s *)priv;
 
@@ -296,7 +295,7 @@ int icmpv6_neighbor(const net_ipv6addr_t ipaddr)
    */
 
   save = net_lock();
-  state.snd_cb = icmpv6_callback_alloc();
+  state.snd_cb = icmpv6_callback_alloc(dev);
   if (!state.snd_cb)
     {
       ndbg("ERROR: Failed to allocate a cllback\n");
@@ -396,7 +395,7 @@ int icmpv6_neighbor(const net_ipv6addr_t ipaddr)
     }
 
   sem_destroy(&state.snd_sem);
-  icmpv6_callback_free(state.snd_cb);
+  icmpv6_callback_free(dev, state.snd_cb);
 errout_with_lock:
   net_unlock(save);
 errout:

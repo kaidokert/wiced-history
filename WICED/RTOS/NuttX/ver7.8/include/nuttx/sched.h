@@ -431,6 +431,12 @@ struct task_group_s
 
   struct group_shm_s tg_shm;        /* Task shared memory logic                 */
 #endif
+
+  /* POSIX Thread Specific Data *************************************************/
+
+#if CONFIG_NPTHREAD_KEYS > 0
+  FAR void *pthread_data[CONFIG_NPTHREAD_KEYS];
+#endif
 };
 #endif
 
@@ -591,11 +597,6 @@ struct pthread_tcb_s
   pthread_addr_t arg;                    /* Startup argument                    */
   FAR void *joininfo;                    /* Detach-able info to support join    */
 
-  /* POSIX Thread Specific Data *************************************************/
-
-#if CONFIG_NPTHREAD_KEYS > 0
-  FAR void *pthread_data[CONFIG_NPTHREAD_KEYS];
-#endif
 };
 #endif /* !CONFIG_DISABLE_PTHREAD */
 

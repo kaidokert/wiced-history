@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  *
  * AK4961 I2C bus implementation.
  */
@@ -119,6 +142,14 @@ static wiced_result_t ak4961_i2c_reg_write(wiced_i2c_device_t *device, uint16_t 
     return wiced_i2c_transfer( device, msg, 1 );
 }
 
+static wiced_result_t ak4961_i2c_ram_write( wiced_i2c_device_t *device, const uint8_t *data, uint32_t data_length)
+{
+    wiced_i2c_message_t     msg[1];
+    AK4961_VERIFY( wiced_i2c_init_tx_message( msg, data, data_length, I2C_XFER_RETRY_COUNT, I2C_DISABLE_DMA ) );
+
+    return wiced_i2c_transfer( device, msg, 1 );
+}
+
 wiced_result_t ak4961_reg_init( ak4961_device_cmn_data_t *ak4961 )
 {
     AK4961_VERIFY( wiced_i2c_init( ak4961->i2c_data ) );
@@ -156,5 +187,11 @@ wiced_result_t ak4961_reg_write( ak4961_device_cmn_data_t *ak4961, uint16_t regi
 {
     AK4961_VERIFY( ak4961_i2c_reg_write( ak4961->i2c_data, register_address, reg_data ) );
     ak4961_reg_state[register_address] = reg_data;
+    return WICED_SUCCESS;
+}
+
+wiced_result_t ak4961_ram_write( ak4961_device_cmn_data_t *ak4961, const uint8_t *data, uint32_t data_length )
+{
+    AK4961_VERIFY( ak4961_i2c_ram_write( ak4961->i2c_data, data, data_length ) );
     return WICED_SUCCESS;
 }

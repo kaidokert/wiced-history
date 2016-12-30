@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/socket/net_sockets.c
  *
- *   Copyright (C) 2007-2009, 2011-2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2011-2014, 2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,22 +54,6 @@
 #if CONFIG_NSOCKET_DESCRIPTORS > 0
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Public Types
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
  * Private Functions
  ****************************************************************************/
 
@@ -83,7 +67,7 @@ static void _net_semtake(FAR struct socketlist *list)
        * the wait was awakened by a signal.
        */
 
-      ASSERT(*get_errno_ptr() == EINTR);
+      DEBUGASSERT(get_errno() == EINTR);
     }
 }
 
@@ -157,10 +141,10 @@ void net_releaselist(FAR struct socketlist *list)
  *   Allocate a socket descriptor
  *
  * Input Parameters:
- *   Lowest socket descripor index to be used.
+ *   Lowest socket descriptor index to be used.
  *
  * Returned Value:
- *   On success, a socket desrciptor >= minsd is returned.  A negater errno
+ *   On success, a socket descriptor >= minsd is returned.  A negated errno
  *   value is returned on failure.
  *
  ****************************************************************************/
@@ -208,14 +192,16 @@ int sockfd_allocate(int minsd)
  *   Free a socket.
  *
  * Input Parameters:
+ *   psock - A reference to the socket instance to be freed.
  *
  * Returned Value:
+ *   None
  *
  ****************************************************************************/
 
 void sock_release(FAR struct socket *psock)
 {
-#if CONFIG_DEBUG
+#ifdef CONFIG_DEBUG
   if (psock)
 #endif
     {

@@ -172,7 +172,7 @@ void igmp_startticks(FAR struct igmp_group_s *group, unsigned int ticks)
 
   gtmrlldbg("ticks: %d\n", ticks);
 
-  ret = wd_start(group->wdog, ticks, igmp_timeout, 1, (uint32_t)group);
+  ret = wd_start(group->wdog, ticks, (wdentry_t)igmp_timeout, 1, (uint32_t)group);
 
   DEBUGASSERT(ret == OK);
   UNUSED(ret);

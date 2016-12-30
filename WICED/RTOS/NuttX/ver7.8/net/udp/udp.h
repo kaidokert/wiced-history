@@ -65,14 +65,16 @@
 
 /* Allocate a new UDP data callback */
 
-#define udp_callback_alloc(conn)   devif_callback_alloc(&conn->list)
-#define udp_callback_free(conn,cb) devif_callback_free(cb, &conn->list)
+#define udp_callback_alloc(dev, conn) \
+  devif_callback_alloc(dev, &conn->list)
+#define udp_callback_free(dev, conn,cb) \
+  devif_conn_callback_free(dev, cb, &conn->list)
 
 /****************************************************************************
  * Public Type Definitions
  ****************************************************************************/
 
-/* Representation of a uIP UDP connection */
+/* Representation of a UDP connection */
 
 struct devif_callback_s;  /* Forward reference */
 struct udp_hdr_s;         /* Forward reference */
@@ -214,13 +216,14 @@ int udp_bind(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr);
  * Input Parameters:
  *   conn - A reference to UDP connection structure
  *   addr - The address of the remote host.
+ *   connected - a flag to indicate if the UDP socket is connected
  *
  * Assumptions:
  *   This function is called user code.  Interrupts may be enabled.
  *
  ****************************************************************************/
 
-int udp_connect(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr);
+int udp_connect(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr, int connected);
 
 /****************************************************************************
  * Function: udp_ipv4_select
@@ -333,6 +336,80 @@ int udp_ipv6_input(FAR struct net_driver_s *dev);
 #endif
 
 /****************************************************************************
+ * Function: udp_find_ipv4_device
+ *
+ * Description:
+ *   Select the network driver to use with the IPv4 UDP transaction.
+ *
+ * Input Parameters:
+ *   conn - UDP connection structure (not currently used).
+ *   ipv4addr - The IPv4 address to use in the device selection.
+ *
+ * Returned Value:
+ *   A pointer to the network driver to use.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_IPv4
+FAR struct net_driver_s *udp_find_ipv4_device(FAR struct udp_conn_s *conn,
+                                              in_addr_t ipv4addr);
+#endif
+
+/****************************************************************************
+ * Function: udp_find_ipv6_device
+ *
+ * Description:
+ *   Select the network driver to use with the IPv6 UDP transaction.
+ *
+ * Input Parameters:
+ *   conn - UDP connection structure (not currently used).
+ *   ipv6addr - The IPv6 address to use in the device selection.
+ *
+ * Returned Value:
+ *   A pointer to the network driver to use.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_IPv6
+FAR struct net_driver_s *udp_find_ipv6_device(FAR struct udp_conn_s *conn,
+                                              net_ipv6addr_t ipv6addr);
+#endif
+
+/****************************************************************************
+ * Function: udp_find_laddr_device
+ *
+ * Description:
+ *   Select the network driver to use with the UDP transaction using the
+ *   locally bound IP address.
+ *
+ * Input Parameters:
+ *   conn - UDP connection structure (not currently used).
+ *
+ * Returned Value:
+ *   A pointer to the network driver to use.
+ *
+ ****************************************************************************/
+
+FAR struct net_driver_s *udp_find_laddr_device(FAR struct udp_conn_s *conn);
+
+/****************************************************************************
+ * Function: udp_find_raddr_device
+ *
+ * Description:
+ *   Select the network driver to use with the UDP transaction using the
+ *   remote IP address.
+ *
+ * Input Parameters:
+ *   conn - UDP connection structure (not currently used).
+ *
+ * Returned Value:
+ *   A pointer to the network driver to use.
+ *
+ ****************************************************************************/
+
+FAR struct net_driver_s *udp_find_raddr_device(FAR struct udp_conn_s *conn);
+
+/****************************************************************************
  * Function: udp_callback
  *
  * Description:
@@ -346,8 +423,19 @@ int udp_ipv6_input(FAR struct net_driver_s *dev);
  *
  ****************************************************************************/
 
-uint16_t udp_callback(FAR struct net_driver_s *dev,
-                      FAR struct udp_conn_s *conn, uint16_t flags);
+uint32_t udp_callback(FAR struct net_driver_s *dev,
+                      FAR struct udp_conn_s *conn, uint32_t flags);
+
+/****************************************************************************
+ * Function: psock_udp_send
+ *
+ * Description:
+ *   Implements send() for connected UDP sockets
+ *
+ ****************************************************************************/
+
+ssize_t psock_udp_send(FAR struct socket *psock, FAR const void *buf,
+                       size_t len);
 
 /****************************************************************************
  * Function: psock_udp_sendto

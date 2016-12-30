@@ -78,12 +78,6 @@
  * Public Data
  ****************************************************************************/
 
-#if defined(CONFIG_NET_ICMPv6_PING) || defined(CONFIG_NET_ICMPv6_NEIGHBOR)
-/* This is the singleton "connection" structure for TX polls and echo replies */
-
-struct icmpv6_conn_s g_icmpv6_conn;
-#endif
-
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -293,11 +287,11 @@ void icmpv6_input(FAR struct net_driver_s *dev)
 
     case ICMPv6_ECHO_REPLY:
       {
-        uint16_t flags = ICMPv6_ECHOREPLY;
+        uint32_t flags = ICMPv6_ECHOREPLY;
 
         /* Dispatch the ECHO reply to the waiting thread */
 
-        flags = devif_callback_execute(dev, icmp, flags, g_icmpv6_conn.list);
+        flags = devif_conn_event(dev, icmp, flags, dev->d_conncb);
 
         /* If the ECHO reply was not handled, then drop the packet */
 

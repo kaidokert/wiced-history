@@ -2,7 +2,7 @@
  * net/tcp/tcp_timer.c
  * Poll for the availability of TCP TX data
  *
- *   Copyright (C) 2007-2010, 2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2010, 2015-2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Adapted for NuttX from logic in uIP which also has a BSD-like license:
@@ -57,22 +57,6 @@
 #include "tcp/tcp.h"
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Public Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -98,8 +82,8 @@
 void tcp_timer(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
                int hsec)
 {
+  uint32_t result;
   uint8_t hdrlen;
-  uint8_t result;
 
   /* Set up for the callback.  We can't know in advance if the application
    * is going to send a IPv4 or an IPv6 packet, so this setup may not
@@ -147,10 +131,36 @@ void tcp_timer(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
   if (conn->tcpstateflags == TCP_TIME_WAIT ||
       conn->tcpstateflags == TCP_FIN_WAIT_2)
     {
+      unsigned int newtimer;
+
       /* Increment the connection timer */
 
-      conn->timer += hsec;
-      if (conn->timer >= TCP_TIME_WAIT_TIMEOUT)
+      newtimer = (unsigned int)conn->timer + hsec;
+
+      /* Check if the timer exceeds the timeout value */
+
+      if (newtimer >= TCP_TIME_WAIT_TIMEOUT)
+        {
+          /* Set the timer to the maximum value */
+
+          conn->timer = TCP_TIME_WAIT_TIMEOUT;
+
+#ifdef CONFIG_NETDEV_MULTINIC
+          /* The TCP connection was established and, hence, should be bound
+           * to a device. Make sure that the polling device is the one that
+           * we are bound to.
+           *
+           * If not, then we will catch the timeout on the next poll from
+           * the correct device.
+           */
+
+          DEBUGASSERT(conn->dev != NULL);
+          if (dev != conn->dev)
+            {
+              nllvdbg("TCP: TCP_CLOSED pending\n");
+            }
+          else
+#endif
         {
           conn->tcpstateflags = TCP_CLOSED;
 
@@ -159,6 +169,13 @@ void tcp_timer(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
           result = tcp_callback(dev, conn, TCP_TIMEDOUT);
 
           nllvdbg("TCP state: TCP_CLOSED\n");
+        }
+    }
+      else
+        {
+          /* No timeout. Just update the incremented timer */
+
+          conn->timer = newtimer;
         }
     }
   else if (conn->tcpstateflags != TCP_CLOSED)
@@ -184,6 +201,22 @@ void tcp_timer(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
 
               conn->timer = 0;
 
+#ifdef CONFIG_NETDEV_MULTINIC
+              /* The TCP is connected and, hence, should be bound to a
+               * device. Make sure that the polling device is the one that
+               * we are bound to.
+               *
+               * If not, then we will catch the timeout on the next poll
+               * from the correct device.
+               */
+
+              DEBUGASSERT(conn->dev != NULL);
+              if (dev != conn->dev)
+                {
+                  nllvdbg("TCP: TCP_CLOSED pending\n");
+                  goto done;
+                }
+#endif
               /* Should we close the connection? */
 
               if (
@@ -266,7 +299,9 @@ void tcp_timer(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
             }
         }
 
-      /* The connection does not have outstanding data */
+      /* The connection does not have outstanding data.  Check if the TCP
+       * connection has been established.
+       */
 
       else if ((conn->tcpstateflags & TCP_STATE_MASK) == TCP_ESTABLISHED)
         {
@@ -274,9 +309,20 @@ void tcp_timer(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
            * application for new data.
            */
 
-          result = tcp_callback(dev, conn, TCP_POLL);
-          tcp_appsend(dev, conn, result);
-          goto done;
+#ifdef CONFIG_NETDEV_MULTINIC
+          /* The TCP connection is established and, hence, should be bound
+           * to a device. Make sure that the polling device is the one that
+           * we are bound to.
+           */
+
+          DEBUGASSERT(conn->dev != NULL);
+          if (dev == conn->dev)
+#endif
+            {
+              result = tcp_callback(dev, conn, TCP_POLL);
+              tcp_appsend(dev, conn, result);
+              goto done;
+            }
         }
     }
 

@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -265,9 +288,6 @@ static uint8_t wwd_sdpcm_last_bus_data_credit    = 0;
 static uint8_t wwd_sdpcm_credit_diff             = 0;
 static uint8_t wwd_sdpcm_largest_credit_diff     = 0;
 
-/* QoS related variables */
-static uint8_t wwd_sdpcm_highest_rx_tos = 0;
-
 /* Packet send queue variables */
 static host_semaphore_type_t                 wwd_sdpcm_send_queue_mutex;
 static wiced_buffer_t /*@owned@*/ /*@null@*/ wwd_sdpcm_send_queue_head   = (wiced_buffer_t) NULL;
@@ -280,6 +300,7 @@ static wwd_interface_t wwd_bss_index_to_host_interface_array[3] = { WWD_STA_INTE
 
 
 /* QoS related variables */
+uint8_t sdpcm_highest_tx_tos = 0;
 uint8_t sdpcm_highest_rx_tos = 0; // XXX remove later, currently used by 11n certification test applications
 
 
@@ -394,7 +415,9 @@ wwd_result_t wwd_sdpcm_init( void )
     /* Initialise the list of event handler functions */
     memset( wwd_sdpcm_event_list, 0, sizeof(wwd_sdpcm_event_list) );
 
-    wwd_sdpcm_highest_rx_tos = 0;
+    sdpcm_highest_rx_tos = 0;
+    sdpcm_highest_tx_tos = 0;
+
     wwd_sdpcm_packet_transmit_sequence_number = 0;
     wwd_sdpcm_last_bus_data_credit = (uint8_t) 1;
 
@@ -701,9 +724,9 @@ void wwd_sdpcm_process_rx_packet( /*@only@*/ wiced_buffer_t buffer )
                 {
                     /* Otherwise an Ethernet data frame received */
 
-                    if ( bdc_header->priority > wwd_sdpcm_highest_rx_tos )
+                    if ( bdc_header->priority > sdpcm_highest_rx_tos )
                     {
-                        wwd_sdpcm_highest_rx_tos = bdc_header->priority;
+                        sdpcm_highest_rx_tos = bdc_header->priority;
                     }
 
                     /* Send packet to bottom of network stack */
@@ -887,7 +910,7 @@ wwd_result_t wwd_sdpcm_send_ioctl( sdpcm_command_type_t type, uint32_t command, 
     send_packet->cdc_header.flags  = ( ( (uint32_t) ++wwd_sdpcm_requested_ioctl_id << CDCF_IOC_ID_SHIFT ) & CDCF_IOC_ID_MASK ) | type | bss_index << CDCF_IOC_IF_SHIFT;
     send_packet->cdc_header.status = 0;
 
-    WWD_LOG( ( "Wcd:> IOCTL pkt 0x%08lX: cmd %d, len %d\n", (unsigned long)send_buffer_hnd, (int)command, (int)data_length ) );
+    WPRINT_WWD_IOCTL( ( "IOCTL: cmd %d, len %d\n", (int)command, (int)data_length ) );
 
     /* Manufacturing test can receive big buffers, but sending big buffers causes a wlan firmware error */
     /* Even though data portion needs to be truncated, cdc_header should have the actual length of the ioctl packet */
@@ -931,7 +954,6 @@ wwd_result_t wwd_sdpcm_send_ioctl( sdpcm_command_type_t type, uint32_t command, 
 
     /* Release the mutex since wwd_sdpcm_ioctl_response will no longer be referenced. */
     host_rtos_set_semaphore( &wwd_sdpcm_ioctl_mutex, WICED_FALSE );
-
 
     /* Check whether the IOCTL response indicates it failed. */
     if ( ( flags & CDCF_IOC_ERROR ) != 0)
@@ -1110,6 +1132,8 @@ wwd_result_t wwd_management_set_event_handler( /*@keep@*/ const wwd_event_num_t*
 {
     uint32_t name_length = (uint32_t) strlen( name ) + 1; /* + 1 for terminating null */
     uint32_t name_length_alignment_offset = (64 - name_length) % sizeof(uint32_t);
+
+    WPRINT_WWD_IOCTL( ( "IOVAR: %s, len %d\n", name, (int)data_length ) );
     if ( internal_host_buffer_get( buffer, WWD_NETWORK_TX, (unsigned short) ( IOCTL_OFFSET + data_length + name_length + name_length_alignment_offset ), (unsigned long) WICED_IOCTL_PACKET_TIMEOUT ) == WWD_SUCCESS )
     {
         uint8_t* data = ( host_buffer_get_current_piece_data_pointer( *buffer ) + IOCTL_OFFSET );
@@ -1153,12 +1177,14 @@ wwd_result_t wwd_sdpcm_get_packet_to_send( /*@special@*/ /*@out@*/  wiced_buffer
         /* Check if we're being flow controlled */
         if ( wwd_bus_is_flow_controlled() == WICED_TRUE )
         {
+            WWD_STATS_INCREMENT_VARIABLE( flow_control );
             return WWD_FLOW_CONTROLLED;
         }
 
         /* Check if we have enough bus data credits spare */
         if ( wwd_sdpcm_packet_transmit_sequence_number == wwd_sdpcm_last_bus_data_credit )
         {
+            WWD_STATS_INCREMENT_VARIABLE( no_credit );
             return WWD_NO_CREDITS;
         }
 

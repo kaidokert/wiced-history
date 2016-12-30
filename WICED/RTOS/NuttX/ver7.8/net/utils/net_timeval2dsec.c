@@ -39,6 +39,8 @@
 
 #include <nuttx/config.h>
 
+#include <sys/time.h>
+
 #include <nuttx/clock.h>
 
 #include "utils/utils.h"
@@ -55,7 +57,8 @@
  *   save new timeout values.
  *
  * Parameters:
- *   tv   The struct timeval to convert
+ *   tv        - The struct timeval to convert
+ *   remainder - Determines how to handler the microsecond remainder
  *
  * Returned Value:
  *   The converted value
@@ -64,7 +67,26 @@
  *
  ****************************************************************************/
 
-unsigned int net_timeval2dsec(struct timeval *tv)
+unsigned int net_timeval2dsec(FAR struct timeval *tv,
+                              enum tv2ds_remainder_e remainder)
 {
-  return (unsigned int)(tv->tv_sec * DSEC_PER_SEC + tv->tv_usec / USEC_PER_DSEC);
+  unsigned long adjust = 0;
+
+  switch (remainder)
+    {
+    default:
+    case TV2DS_TRUNC: /* Truncate microsecond remainder */
+      break;
+
+    case TV2DS_ROUND: /* Round to the nearest full decisecond */
+      adjust = (USEC_PER_DSEC / 2);
+      break;
+
+    case TV2DS_CEIL:  /* Force to next larger full decisecond */
+      adjust = (USEC_PER_DSEC - 1);
+      break;
+    }
+
+  return (unsigned int)(tv->tv_sec * DSEC_PER_SEC +
+                       (tv->tv_usec + adjust) / USEC_PER_DSEC);
 }

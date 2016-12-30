@@ -50,14 +50,6 @@
 #include "pkt/pkt.h"
 
 /****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -75,10 +67,10 @@
  *
  ****************************************************************************/
 
-uint16_t pkt_callback(FAR struct net_driver_s *dev,
-                      FAR struct pkt_conn_s *conn, uint16_t flags)
+uint32_t pkt_callback(FAR struct net_driver_s *dev,
+                      FAR struct pkt_conn_s *conn, uint32_t flags)
 {
-  nllvdbg("flags: %04x\n", flags);
+  nllvdbg("flags: %08x\n", flags);
 
   /* Some sanity checking */
 
@@ -86,7 +78,7 @@ uint16_t pkt_callback(FAR struct net_driver_s *dev,
     {
       /* Perform the callback */
 
-      flags = devif_callback_execute(dev, conn, flags, conn->list);
+      flags = devif_conn_event(dev, conn, flags, conn->list);
     }
 
   return flags;

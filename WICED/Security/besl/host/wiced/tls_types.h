@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 #pragma once
 
@@ -142,7 +165,8 @@ typedef struct _ssl_context  wiced_tls_workspace_t;
 typedef struct _ssl_session  wiced_tls_session_t;
 typedef uint32_t             tls_packet_t;
 
-typedef int (*wiced_tls_sign_certificate_verify)(  wiced_tls_rsa_key_t* rsa_key ,rsa_hash_id_t hash_id, int32_t hashlen, const unsigned char *hash, unsigned char *rsa_sign, uint32_t* key_length );
+typedef int (*wiced_tls_sign_certificate_verify)(  void* key ,rsa_hash_id_t hash_id, int32_t hashlen, const unsigned char *hash, unsigned char *sign, uint32_t* key_length, wiced_tls_key_type_t type );
+
 
 typedef struct
 {
@@ -162,9 +186,9 @@ typedef struct
         wiced_tls_rsa_key_t rsa;
         wiced_tls_ecc_key_t ecc;
         wiced_tls_psk_key_t psk;
-        wiced_tls_sign_certificate_verify rsa_sign;
     } private_key;
     wiced_tls_certificate_t certificate;
+    wiced_tls_sign_certificate_verify custom_sign;
 } wiced_tls_identity_t;
 
 #pragma pack(1)
@@ -249,6 +273,8 @@ typedef union
         camellia_context camellia;
         chacha_context_t chacha;
         seed_context_t seed;
+        void* gcm;
+        void* ccm;
 } tls_cipher_context;
 
 /*

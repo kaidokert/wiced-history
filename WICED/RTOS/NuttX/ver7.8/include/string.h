@@ -91,7 +91,6 @@ FAR char  *strstr(FAR const char *, FAR const char *);
 FAR char  *strcasestr(FAR const char *, FAR const char *);
 FAR char  *strtok(FAR char *, FAR const char *);
 FAR char  *strtok_r(FAR char *, FAR const char *, FAR char **);
-size_t     strlcpy(char *, const char *, size_t);
 
 FAR void  *memchr(FAR const void *s, int c, size_t n);
 FAR void  *memccpy(FAR void *s1, FAR const void *s2, int c, size_t n);

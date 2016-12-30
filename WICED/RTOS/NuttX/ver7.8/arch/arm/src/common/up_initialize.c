@@ -246,7 +246,13 @@ void up_initialize(void)
 
   up_netinitialize();
 
-  /* Initialize USB -- device and/or host */
+  #ifdef CONFIG_NETDEV_LOOPBACK
+  /* Initialize the local loopback device */
+
+  (void)localhost_initialize();
+#endif
+
+/* Initialize USB -- device and/or host */
 
   up_usbinitialize();
 

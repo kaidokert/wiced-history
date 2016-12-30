@@ -46,6 +46,7 @@
 
 #include <stdint.h>
 
+#include <nuttx/clock.h>
 #include <nuttx/net/netstats.h>
 #include <nuttx/net/ip.h>
 
@@ -56,7 +57,7 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Public Variables
+ * Public Data
  ****************************************************************************/
 
 /* IP/TCP/UDP/ICMP statistics for all network interfaces */
@@ -69,19 +70,11 @@ struct net_stats_s g_netstats;
 
 uint16_t g_ipid;
 
-#ifdef CONFIG_NET_IPv4
-
-const in_addr_t g_ipv4_alloneaddr  = 0xffffffff;
-const in_addr_t g_ipv4_allzeroaddr = 0x00000000;
-
+#if defined(CONFIG_NET_IPv4) && defined(CONFIG_NET_TCP_REASSEMBLY)
 /* Reassembly timer (units: deci-seconds) */
 
-#ifdef CONFIG_NET_TCP_REASSEMBLY
-
 uint8_t g_reassembly_timer;
-
-#endif /* CONFIG_NET_TCP_REASSEMBLY */
-#endif /* CONFIG_NET_IPv4 */
+#endif
 
 #ifdef CONFIG_NET_IPv6
 
@@ -110,6 +103,14 @@ const net_ipv6addr_t g_ipv6_allrouters =  /* All link local routers */
   HTONS(0xff02),
   0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
   HTONS(0x0002)
+};
+
+/* IPv6 Loopback IP addresses */
+
+const net_ipv6addr_t g_ipv6_loopback =    /* All link local nodes */
+{
+  0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+  HTONS(0x0001)
 };
 
 #ifdef CONFIG_NET_ICMPv6_AUTOCONF
@@ -148,14 +149,6 @@ const struct ether_addr g_ipv6_ethallrouters =   /* All link local routers */
 #endif /* CONFIG_NET_IPv4 */
 
 /****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -175,8 +168,6 @@ const struct ether_addr g_ipv6_ethallrouters =   /* All link local routers */
 
 void devif_initialize(void)
 {
-  /* Initialize callback support */
-
   devif_callback_init();
 }
 #endif /* CONFIG_NET */

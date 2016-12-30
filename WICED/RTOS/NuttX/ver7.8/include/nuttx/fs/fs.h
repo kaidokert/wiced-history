@@ -836,7 +836,28 @@ int file_fsync(FAR struct file *filep);
 int file_vfcntl(FAR struct file *filep, int cmd, va_list ap);
 #endif
 
-/* drivers/dev_null.c *******************************************************/
+/****************************************************************************
+ * Function: file_poll
+ *
+ * Description:
+ *   The standard poll() operation redirects operations on file descriptors
+ *   to this function.
+ *
+ * Input Parameters:
+ *   fd    - The file descriptor of interest
+ *   fds   - The structure describing the events to be monitored, OR NULL if
+ *           this is a request to stop monitoring events.
+ *   setup - true: Setup up the poll; false: Teardown the poll
+ *
+ * Returned Value:
+ *  0: Success; Negated errno on failure
+ *
+ ****************************************************************************/
+
+#if CONFIG_NFILE_DESCRIPTORS > 0
+int file_poll(int fd, FAR struct pollfd *fds, bool setup);
+#endif
+
 /****************************************************************************
  * Name: devnull_register
  *

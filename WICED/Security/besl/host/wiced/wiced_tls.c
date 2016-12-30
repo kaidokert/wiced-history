@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -29,6 +52,8 @@
 #include "x509.h"
 #include <string.h>
 #include "tls_cipher_suites.h"
+#include "tls_suite.h"
+#include "uECC.h"
 
 #ifndef DISABLE_EAP_TLS
 #include "wiced_supplicant.h"
@@ -530,31 +555,45 @@ static int32_t tls_set_session( ssl_context *ssl )
 tls_result_t tls_calculate_encrypt_buffer_length( ssl_context* context, uint16_t* required_buff_size, uint16_t payload_size)
 {
     uint16_t padlen = 0;
+    uint16_t mac_length;
     tls_result_t result = TLS_SUCCESS;
 
     if ( context != NULL && context->state == SSL_HANDSHAKE_OVER )
     {
+
+      const struct cipher_api_t* cipher_driver = context->session->cipher->cipher_driver;
+
       *required_buff_size = payload_size;
 
       /* MAC */
       *required_buff_size += context->maclen;
 
-      /* Compensate for padding */
-      if ( context->ivlen != 0 )
+      /* for AEAD algorithms padding is not needed. change mac length here if you add any new AEAD cipher */
+      if ( (cipher_driver->type == AES_128_GCM_CIPHER ) ||  ( cipher_driver->type == AES_128_CCM_8_CIPHER ) )
       {
-          /* Note: There must be at least one byte of padding so align to block size and add an extra 1 */
-          padlen = context->ivlen - (*required_buff_size + 1) % context->ivlen;
-          if ( padlen == context->ivlen )
-          {
-              padlen = 0;
-          }
-          *required_buff_size += padlen + 1;
+           mac_length = cipher_driver->type == AES_128_GCM_CIPHER ? 16 : 8;
+           *required_buff_size = *required_buff_size + ( ( context->ivlen - context->iv_fixedlen ) + mac_length );
       }
-
-      /* TLS 1.1+ uses explicit IV in footer */
-      if ( context->minor_ver > 1 )
+      else
       {
-          *required_buff_size += context->ivlen;
+          /* Compensate for padding */
+          if ( context->ivlen != 0 )
+          {
+              /* Note: There must be at least one byte of padding so align to block size and add an extra 1 */
+              padlen = context->ivlen - (*required_buff_size + 1) % context->ivlen;
+              if ( padlen == context->ivlen )
+              {
+                  padlen = 0;
+              }
+              *required_buff_size += padlen + 1;
+          }
+
+          /* TLS 1.1+ uses explicit IV in footer */
+          if ( context->minor_ver > 1 )
+          {
+              *required_buff_size += context->ivlen;
+          }
+
       }
     }
     else
@@ -692,7 +731,7 @@ wiced_result_t wiced_tls_init_context( wiced_tls_context_t* context, wiced_tls_i
     return WICED_SUCCESS;
 }
 
-int tls_sign_hash( wiced_tls_rsa_key_t* rsa_key ,rsa_hash_id_t hash_id, int32_t hashlen, const unsigned char *hash, unsigned char *rsa_sign, uint32_t* key_length)
+int tls_sign_hash( void* key, rsa_hash_id_t hash_id, int32_t hashlen, const unsigned char *hash, unsigned char *sign, uint32_t* key_length, wiced_tls_key_type_t type )
 {
     /* This function should sign on hash message using RSA private key and should
      * give signed hash message and private RSA key length as output.
@@ -705,15 +744,39 @@ int tls_sign_hash( wiced_tls_rsa_key_t* rsa_key ,rsa_hash_id_t hash_id, int32_t 
      * key_length (OUT)   : Length of private key
      *
      * Return : return 0 on success
-    */
+     */
     int ret = 0;
 
-    *key_length = rsa_key->length;
-
-    ret = rsa_pkcs1_sign( rsa_key , RSA_PRIVATE, hash_id, hashlen, hash, rsa_sign );
-    if ( ret != 0 )
+    if ( type == TLS_RSA_KEY )
     {
-        return ( ret );
+        wiced_tls_rsa_key_t* rsa_key = (wiced_tls_rsa_key_t *) key;
+
+        *key_length = rsa_key->length;
+
+        ret = rsa_pkcs1_sign( rsa_key, RSA_PRIVATE, hash_id, hashlen, hash, sign );
+        if ( ret != 0 )
+        {
+            WPRINT_SECURITY_ERROR(( "Failed todo RSA sign\n" ));
+            return ( ret );
+        }
+    }
+    else if ( type == TLS_ECC_KEY )
+    {
+        wiced_tls_ecc_key_t* ecc_key = (wiced_tls_ecc_key_t *) key;
+
+        *key_length = ecc_key->length;
+
+        ret = uECC_sign( ecc_key->key, hash, sign );
+        if ( ret != 1 )
+        {
+            WPRINT_SECURITY_ERROR(( "Failed todo ECC sign\n" ));
+            return ( ret );
+        }
+    }
+    else
+    {
+        WPRINT_SECURITY_ERROR(( "Failed todo ECC sign\n" ));
+        return ret;
     }
 
     return 0;
@@ -795,7 +858,7 @@ wiced_result_t wiced_tls_init_identity( wiced_tls_identity_t* identity, const ch
         }
     }
 
-    identity->private_key.rsa_sign = tls_sign_hash;
+    identity->custom_sign = tls_sign_hash;
 
     return WICED_SUCCESS;
 }
@@ -980,7 +1043,11 @@ wiced_result_t wiced_generic_start_tls_with_ciphers( wiced_tls_context_t* tls_co
             tls_context->context.identity->private_key.rsa.f_rng = microrng_rand;
             tls_context->context.identity->private_key.rsa.p_rng = &rngstate;
         }
-        ssl_set_dh_param( &tls_context->context, diffie_hellman_prime_P, sizeof( diffie_hellman_prime_P ), diffie_hellman_prime_G, sizeof( diffie_hellman_prime_G ) );
+
+        if ( type == WICED_TLS_AS_SERVER )
+        {
+            ssl_set_dh_param( &tls_context->context, diffie_hellman_prime_P, sizeof( diffie_hellman_prime_P ), diffie_hellman_prime_G, sizeof( diffie_hellman_prime_G ) );
+        }
     }
 
     prev_state = 0;
@@ -1053,25 +1120,37 @@ wiced_result_t wiced_tls_calculate_overhead( wiced_tls_workspace_t* context, uin
 {
     *header = 0;
     *footer = 0;
+    uint16_t mac_length;
+
     if ( context != NULL && context->state == SSL_HANDSHAKE_OVER )
     {
+        const struct cipher_api_t* cipher_driver = context->session->cipher->cipher_driver;
+
         /* Add TLS record header */
         *header = sizeof(tls_record_header_t);
 
-        /* Compensate for padding */
-        if ( context->ivlen != 0 )
+        if ( (cipher_driver->type == AES_128_GCM_CIPHER ) ||  ( cipher_driver->type == AES_128_CCM_8_CIPHER ) )
         {
-            /* Note: There must be at least one byte of padding so align to block size and add an extra 1 */
-            *footer += ( available_space - *header - *footer ) % context->ivlen + 1;
+             mac_length = cipher_driver->type == AES_128_GCM_CIPHER ? 16 : 8;
+             *footer = ( context->ivlen - context->iv_fixedlen ) + mac_length + sizeof(tls_record_header_t);
         }
-
-        /* MAC */
-        *footer += context->maclen;
-
-        /* TLS 1.1+ uses explicit IV in footer */
-        if ( context->minor_ver > 1 )
+        else
         {
-            *footer += context->ivlen;
+            /* Compensate for padding */
+            if ( context->ivlen != 0 )
+            {
+                /* Note: There must be at least one byte of padding so align to block size and add an extra 1 */
+                *footer += ( available_space - *header - *footer ) % context->ivlen + 1;
+            }
+
+            /* MAC */
+            *footer += context->maclen;
+
+            /* TLS 1.1+ uses explicit IV in footer */
+            if ( context->minor_ver > 1 )
+            {
+                *footer += context->ivlen;
+            }
         }
     }
     return WICED_SUCCESS;

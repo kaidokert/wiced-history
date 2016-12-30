@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -84,16 +107,6 @@ typedef enum
     IPv6_LINK_LOCAL_ADDRESS,
     IPv6_GLOBAL_ADDRESS,
 } wiced_ipv6_address_type_t;
-
-/**
- * TCP Callback Events
- */
-typedef enum
-{
-    WICED_TCP_DISCONNECTED_EVENT = (1 << 0),
-    WICED_TCP_RECEIVE_EVENT      = (1 << 1),
-    WICED_TCP_CONNECTED_EVENT    = (1 << 2),
-} wiced_tcp_event_t;
 
 /**
  * Packet type for network packet allocation requests.
@@ -261,8 +274,8 @@ wiced_result_t wiced_tcp_listen( wiced_tcp_socket_t* socket, uint16_t port );
  *  which is connected currently to a server
  *
  *  @param[in]  socket : A pointer to a socket handle that has been previously created with @ref wiced_tcp_create_socket
- *  @param[out] address: returned IP address of the connected client
- *  @param[out] port   : returned source port of the connected client
+ *  @param[out] address: Returned IP address of the connected client
+ *  @param[out] port   : Returned source port of the connected client
  *
  * @return @ref wiced_result_t
  */
@@ -282,7 +295,19 @@ wiced_result_t wiced_tcp_accept( wiced_tcp_socket_t* socket );
 
 /** Disconnect a TCP connection
  *
- *  Disconnects a TCP connection from a remote host
+ *  Disconnects a TCP connection from a remote host using the specified timeout
+ *
+ * @param[in,out] socket     : The open TCP socket to disconnect
+ * @param[in]     timeout_ms : Timeout period in milliseconds
+ *
+ * @return @ref wiced_result_t
+ */
+wiced_result_t wiced_tcp_disconnect_with_timeout( wiced_tcp_socket_t* socket, uint32_t timeout_ms );
+
+
+/** Disconnect a TCP connection
+ *
+ *  Disconnects a TCP connection from a remote host using the default timeout
  *
  * @param[in,out] socket : The open TCP socket to disconnect
  *
@@ -341,7 +366,7 @@ wiced_result_t wiced_tcp_start_tls( wiced_tcp_socket_t* socket, wiced_tls_endpoi
  * @param[in,out] referee      : Transport reference - e.g. TCP socket or EAP context
  * @param[in]     type         : Identifies whether the device will be TLS client or server
  * @param[in]     verification : Indicates whether to verify the certificate chain against a root server.
- * @param[in]     cipher_list  : a list of cipher suites. Null terminated.
+ * @param[in]     cipher_list  : A list of cipher suites. Null terminated.
  *                               e.g.
  *                                    static const cipher_suite_t* my_ciphers[] =
  *                                    {
@@ -530,7 +555,7 @@ wiced_result_t wiced_tcp_stream_flush( wiced_tcp_stream_t* tcp_stream );
  * @param[in]     probes    : The number of unacknowledged probes to send before considering \n
  *                            the connection dead and notifying the application layer
  * @param[in]     time      : The interval between the last data packet sent (simple ACKs are not \n
-                             considered data) and the first keep-alive probe
+                              considered data) and the first keep-alive probe
 */
 wiced_result_t wiced_tcp_enable_keepalive(wiced_tcp_socket_t* socket, uint16_t interval, uint16_t probes, uint16_t _time );
 
@@ -548,14 +573,14 @@ wiced_result_t wiced_tcp_enable_keepalive(wiced_tcp_socket_t* socket, uint16_t i
 
 /** Initializes the TCP server, and creates and begins listening on specified port
  *
- * @param[in] tcp_server         : pointer to TCP server structure
+ * @param[in] tcp_server         : Pointer to TCP server structure
  * @param[in] interface          : The interface (AP or STA) for which the socket should be created
  * @param[in] port               : TCP server listening port
  * @param[in] max_sockets        : Specify maximum number of sockets server should support. Unused parameter in FreeRTOS-LwIP
- * @param[in] connect_callback   : listening socket connect callback
- * @param[in] receive_callback   : listening socket receive callback
- * @param[in] disconnect_callback: listening socket disconnect callback
- * @param[in] arg                : argument that will be passed to the callbacks
+ * @param[in] connect_callback   : Listening socket connect callback
+ * @param[in] receive_callback   : Listening socket receive callback
+ * @param[in] disconnect_callback: Listening socket disconnect callback
+ * @param[in] arg                : Argument that will be passed to the callbacks
  *
  * @return @ref wiced_result_t
  */
@@ -563,7 +588,7 @@ wiced_result_t wiced_tcp_server_start( wiced_tcp_server_t* tcp_server, wiced_int
 
 /** Server accepts incoming connection on specified socket
  *
- * @param[in] tcp_server      : pointer to TCP server structure
+ * @param[in] tcp_server      : Pointer to TCP server structure
  * @param[in] socket          : TCP socket structure
  *
  * @return @ref wiced_result_t
@@ -572,7 +597,7 @@ wiced_result_t wiced_tcp_server_accept( wiced_tcp_server_t* tcp_server, wiced_tc
 
 /** Add TLS security to a TCP server ( all server sockets )
  *
- * @param[in] tcp_server   : pointer to TCP server structure
+ * @param[in] tcp_server   : Pointer to TCP server structure
  * @param[in] tls_identity : A pointer to a wiced_tls_identity_t object
  *
  * @return @ref wiced_result_t
@@ -581,7 +606,7 @@ wiced_result_t wiced_tcp_server_enable_tls( wiced_tcp_server_t* tcp_server, wice
 
 /** Stop and tear down TCP server
  *
- * @param[in] tcp_server   : pointer to TCP server structure
+ * @param[in] tcp_server   : Pointer to TCP server structure
  *
  * @return @ref wiced_result_t
  */
@@ -589,7 +614,7 @@ wiced_result_t wiced_tcp_server_stop( wiced_tcp_server_t* server );
 
 /** Disconnect server socket
  *
- * @param[in] tcp_server      : pointer to TCP server structure
+ * @param[in] tcp_server      : Pointer to TCP server structure
  * @param[in] socket          : TCP socket structure
  *
  * @return @ref wiced_result_t
@@ -598,16 +623,16 @@ wiced_result_t wiced_tcp_server_disconnect_socket( wiced_tcp_server_t* tcp_serve
 
 /** Get socket state
  *
- * @param[in] socket      : pointer to tcp socket to retrieve socket state from
- * @param[in] state       : socket state is returned here
-
+ * @param[in] socket      : Pointer to tcp socket to retrieve socket state from
+ * @param[in] state       : Socket state is returned here
  *
  * @return @ref wiced_result_t
  */
 wiced_result_t wiced_tcp_get_socket_state( wiced_tcp_socket_t* socket, wiced_socket_state_t* socket_state );
 
 
-/** @} */
+/** @} */  /* TCP server */
+/** @} */  /* TCP */
 
 /*****************************************************************************/
 /** @addtogroup udp       UDP
@@ -711,9 +736,9 @@ wiced_result_t wiced_udp_delete_socket( wiced_udp_socket_t* socket );
  * Get the IP address and UDP port number details of the remote
  * host for a received packet
  *
- * @param[in]  packet  : the packet handle
- * @param[out] address : a pointer to an address structure that will receive the remote IP address
- * @param[out] port    : a pointer to a variable that will receive the remote UDP port number
+ * @param[in]  packet  : The packet handle
+ * @param[out] address : A pointer to an address structure that will receive the remote IP address
+ * @param[out] port    : A pointer to a variable that will receive the remote UDP port number
  *
  * @return @ref wiced_result_t
  */
@@ -731,8 +756,8 @@ wiced_result_t wiced_udp_register_callbacks( wiced_udp_socket_t* socket, wiced_u
 
 /** Add DTLS security to a UDP socket
  *
- * @param[in] UDP_SOCKET   : pointer to UDP socket.
- * @param[in] dtls_identity : A pointer to a wiced_dtls_identity_t object
+ * @param[in] socket    : Pointer to UDP socket.
+ * @param[in] context   : A pointer to a wiced_dtls_identity_t object
  *
  * @return @ref wiced_result_t
  */
@@ -902,12 +927,12 @@ wiced_result_t wiced_multicast_leave( wiced_interface_t interface, const wiced_i
  *         The available_space parameter should be used for this.
  *
  * @param[in,out] socket          : An open TCP socket for which the packet should be created
- * @param[in]     content_length  : the intended length of TCP content if known.
+ * @param[in]     content_length  : The intended length of TCP content if known.
  *                                  (This can be adjusted at a later point with @ref wiced_packet_set_data_end if not known)
  * @param[out]    packet          : Pointer to a packet handle which will receive the allocated packet
  * @param[out]    data            : Pointer pointer which will receive the data pointer for the packet. This is where
  *                                  TCP data should be written
- * @param[out]    available_space : pointer to a variable which will receive the space
+ * @param[out]    available_space : Pointer to a variable which will receive the space
  *                                  available for TCP data in the packet in bytes
  *
  * @return @ref wiced_result_t
@@ -924,12 +949,12 @@ wiced_result_t wiced_packet_create_tcp( wiced_tcp_socket_t* socket, uint16_t con
  *         The available_space parameter should be used for this.
  *
  * @param[in,out] socket          : An open UDP socket for which the packet should be created
- * @param[in]     content_length  : the intended length of UDP content if known.
+ * @param[in]     content_length  : The intended length of UDP content if known.
  *                                  (This can be adjusted at a later point with @ref wiced_packet_set_data_end if not known)
  * @param[out]    packet          : Pointer to a packet handle which will receive the allocated packet
  * @param[out]    data            : Pointer pointer which will receive the data pointer for the packet. This is where
  *                                  UDP data should be written
- * @param[out]    available_space : pointer to a variable which will receive the space
+ * @param[out]    available_space : Pointer to a variable which will receive the space
  *                                  available for UDP data in the packet in bytes
  *
  * @return @ref wiced_result_t
@@ -947,12 +972,12 @@ wiced_result_t wiced_packet_create_udp( wiced_udp_socket_t* socket, uint16_t con
  *         to avoid writing past the end of the packet buffer.
  *         The available_space parameter should be used for this.
  *
- * @param[in]  content_length   : the intended length of content if known.
+ * @param[in]  content_length   : The intended length of content if known.
  *                                (This can be adjusted at a later point with @ref wiced_packet_set_data_end if not known)
  * @param[out] packet           : Pointer to a packet handle which will receive the allocated packet
  * @param[out] data             : Pointer pointer which will receive the data pointer for the packet. This is where
  *                                data should be written
- * @param[out] available_space  : pointer to a variable which will receive the space
+ * @param[out] available_space  : Pointer to a variable which will receive the space
  *                                available for data in the packet in bytes
  *
  * @return @ref wiced_result_t
@@ -965,7 +990,7 @@ wiced_result_t wiced_packet_create( uint16_t content_length, wiced_packet_t** pa
  *  Releases a packet that is in use, back to the main packet pool,
  *  allowing re-use.
  *
- * @param[in,out] packet : the packet to be released
+ * @param[in,out] packet : The packet to be released
  *
  * @return @ref wiced_result_t
  */
@@ -977,11 +1002,11 @@ wiced_result_t wiced_packet_delete( wiced_packet_t* packet );
  * Retrieves a data buffer pointer for a given packet handle at a particular offset.
  * For fragmented packets, the offset input is used to traverse through the packet chain.
  *
- * @param[in,out] packet                          : the packet handle for which to get a data pointer
- * @param[in]     offset                          : the offset from the starting address.
- * @param[out]    data                            : a pointer which will receive the data pointer
- * @param[out]    fragment_available_data_length  : receives the length of data in the current fragment after the specified offset
- * @param[out]    total_available_data_length     : receives the total length of data in the all fragments after the specified offset
+ * @param[in,out] packet                          : The packet handle for which to get a data pointer
+ * @param[in]     offset                          : The offset from the starting address.
+ * @param[out]    data                            : A pointer which will receive the data pointer
+ * @param[out]    fragment_available_data_length  : Receives the length of data in the current fragment after the specified offset
+ * @param[out]    total_available_data_length     : Receives the total length of data in the all fragments after the specified offset
  *
  * @return @ref wiced_result_t
  */
@@ -993,8 +1018,8 @@ wiced_result_t wiced_packet_get_data( wiced_packet_t* packet, uint16_t offset, u
  * If data has been added to a packet, this function should be
  * called to ensure the packet length is updated
  *
- * @param[in,out]  packet   : the packet handle
- * @param[in]      data_end : a pointer to the address immediately after the
+ * @param[in,out]  packet   : The packet handle
+ * @param[in]      data_end : A pointer to the address immediately after the
  *                            last data byte in the packet buffer
  *
  * @return @ref wiced_result_t
@@ -1008,8 +1033,8 @@ wiced_result_t wiced_packet_set_data_end( wiced_packet_t* packet, uint8_t* data_
  * called to ensure calls to wiced_packet_get_data() skip the processed
  * data.
  *
- * @param[in,out] packet     : the packet handle
- * @param[in]     data_start : a pointer to the address immediately after the
+ * @param[in,out] packet     : The packet handle
+ * @param[in]     data_start : A pointer to the address immediately after the
  *                             last processed byte in the packet buffer
  *
  * @return @ref wiced_result_t
@@ -1021,8 +1046,8 @@ wiced_result_t wiced_packet_set_data_start( wiced_packet_t* packet, uint8_t* dat
  *
  * Retrieves the next fragment from a given packet handle
  *
- * @param[in]  packet               : the packet handle
- * @param[out] next_packet_fragment : the packet handle of the next fragment
+ * @param[in]  packet               : The packet handle
+ * @param[out] next_packet_fragment : The packet handle of the next fragment
  *
  * @return @ref wiced_result_t
  */
@@ -1031,10 +1056,10 @@ wiced_result_t wiced_packet_get_next_fragment( wiced_packet_t* packet, wiced_pac
 
 /** Creates a network packet pool from a chunk of memory
  *
- * @param[out] packet_pool    : handle to a packet pool instance which will be initialized
- * @param[in]  memory_pointer : pointer to a chunk of memory
- * @param[in]  memory_size    : size of the memory chunk
- * @param[in]  pool_name      : packet pool name string
+ * @param[out] packet_pool    : Handle to a packet pool instance which will be initialized
+ * @param[in]  memory_pointer : Pointer to a chunk of memory
+ * @param[in]  memory_size    : Size of the memory chunk
+ * @param[in]  pool_name      : Packet pool name string
  *
  * @return @ref wiced_result_t
  */
@@ -1059,14 +1084,14 @@ wiced_result_t wiced_packet_pool_deinit( wiced_packet_pool_ref packet_pool );
  *         to avoid writing past the end of the packet buffer.
  *         The available_space parameter should be used for this.
  *
- * @param[in]  packet_pool      : handle to the packet pool
- * @param[in]  packet_type      : type of packet to allocate
+ * @param[in]  packet_pool      : Handle to the packet pool
+ * @param[in]  packet_type      : Type of packet to allocate
  * @param[out] packet           : Pointer to a packet handle which will receive the allocated packet
  * @param[out] data             : Pointer pointer which will receive the data pointer for the packet. This is where
  *                                data should be written
- * @param[out] available_space  : pointer to a variable which will receive the space
+ * @param[out] available_space  : Pointer to a variable which will receive the space
  *                                available for data in the packet in bytes
- * @param[in]  timeout          : timeout value in milliseconds or WICED_NEVER_TIMEOUT
+ * @param[in]  timeout          : Timeout value in milliseconds or WICED_NEVER_TIMEOUT
  *
  * @return @ref wiced_result_t
  */
@@ -1089,8 +1114,8 @@ wiced_result_t wiced_packet_pool_allocate_packet( wiced_packet_pool_ref packet_p
  * Retrieves the IPv4 address for an interface (AP or STA) if it
  * exists.
  *
- * @param[in]  interface    : the interface (AP or STA)
- * @param[out] ipv4_address : the address structure to be filled
+ * @param[in]  interface    : The interface (AP or STA)
+ * @param[out] ipv4_address : The address structure to be filled
  *
  * @return @ref wiced_result_t
  */
@@ -1102,9 +1127,9 @@ wiced_result_t wiced_ip_get_ipv4_address( wiced_interface_t interface, wiced_ip_
  * Retrieves the IPv6 address for an interface (AP or STA) if it
  * exists.
  *
- * @param[in]  interface    : the interface (AP or STA)
- * @param[out] ipv6_address : the address structure to be filled
- * @param[in]  address_type : the address type
+ * @param[in]  interface    : The interface (AP or STA)
+ * @param[out] ipv6_address : The address structure to be filled
+ * @param[in]  address_type : The address type
  *
  * @return @ref wiced_result_t
  */
@@ -1116,8 +1141,8 @@ wiced_result_t wiced_ip_get_ipv6_address( wiced_interface_t interface, wiced_ip_
  * Retrieves the gateway IPv4 address for an interface (AP or STA) if it
  * exists.
  *
- * @param[in]   interface    : the interface (AP or STA)
- * @param[out]  ipv4_address : the address structure to be filled with the
+ * @param[in]   interface    : The interface (AP or STA)
+ * @param[out]  ipv4_address : The address structure to be filled with the
  *                             gateway IP
  *
  * @return @ref wiced_result_t
@@ -1130,8 +1155,8 @@ wiced_result_t wiced_ip_get_gateway_address( wiced_interface_t interface, wiced_
  * Retrieves the gateway IPv4 netmask for an interface (AP or STA) if it
  * exists.
  *
- * @param[in]  interface    : the interface (AP or STA)
- * @param[out] ipv4_address : the address structure to be filled with the
+ * @param[in]  interface    : The interface (AP or STA)
+ * @param[out] ipv4_address : The address structure to be filled with the
  *                            netmask
  *
  * @return @ref wiced_result_t
@@ -1143,8 +1168,8 @@ wiced_result_t wiced_ip_get_netmask( wiced_interface_t interface, wiced_ip_addre
  *
  * Registers a callback function that gets called when the IP address has changed
  *
- * @param[in] callback : callback function to register
- * @param[in] arg      : pointer to the argument to pass to the callback
+ * @param[in] callback : Callback function to register
+ * @param[in] arg      : Pointer to the argument to pass to the callback
  *
  * @return @ref wiced_result_t
  */
@@ -1155,7 +1180,7 @@ wiced_result_t wiced_ip_register_address_change_callback( wiced_ip_address_chang
  *
  * De-registers a callback function that gets called when the IP address has changed
  *
- * @param[in] callback : callback function to de-register
+ * @param[in] callback : Callback function to de-register
  *
  * @return @ref wiced_result_t
  */
@@ -1163,7 +1188,7 @@ wiced_result_t wiced_ip_deregister_address_change_callback( wiced_ip_address_cha
 
 /** Check whether any packets are pending inside IP stack
  *
- * @param interface: IP instance
+ * @param[in] interface : IP instance
  *
  * @return WICED_TRUE if any packets pending, otherwise WICED_FALSE
  */
@@ -1175,8 +1200,8 @@ wiced_bool_t wiced_ip_is_any_pending_packets( wiced_interface_t interface );
  ******************************************************************************
  * Convert an ipv4 string to a uint32_t.
  *
- * @param     arg  The string containing the value.
- * @param     arg  The structure which will receive the IP address
+ * @param[in]   arg     : The string containing the value.
+ * @param[out]  address : The structure which will receive the IP address
  *
  * @return    0 if read successfully
  */

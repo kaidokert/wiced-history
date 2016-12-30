@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -711,6 +734,7 @@ typedef enum
     WICED_COUNTRY_CAMBODIA                                        = MK_CNTRY( 'K', 'H', 0 ),             /* KH Cambodia */
     WICED_COUNTRY_CAMEROON                                        = MK_CNTRY( 'C', 'M', 0 ),             /* CM Cameroon */
     WICED_COUNTRY_CANADA                                          = MK_CNTRY( 'C', 'A', 0 ),             /* CA Canada */
+    WICED_COUNTRY_CANADA_REV950                                   = MK_CNTRY( 'C', 'A', 950 ),           /* CA Canada Revision 950 */
     WICED_COUNTRY_CAPE_VERDE                                      = MK_CNTRY( 'C', 'V', 0 ),             /* CV Cape_Verde */
     WICED_COUNTRY_CAYMAN_ISLANDS                                  = MK_CNTRY( 'K', 'Y', 0 ),             /* KY Cayman_Islands */
     WICED_COUNTRY_CENTRAL_AFRICAN_REPUBLIC                        = MK_CNTRY( 'C', 'F', 0 ),             /* CF Central_African_Republic */
@@ -752,6 +776,7 @@ typedef enum
     WICED_COUNTRY_GAMBIA                                          = MK_CNTRY( 'G', 'M', 0 ),             /* GM Gambia */
     WICED_COUNTRY_GEORGIA                                         = MK_CNTRY( 'G', 'E', 0 ),             /* GE Georgia */
     WICED_COUNTRY_GERMANY                                         = MK_CNTRY( 'D', 'E', 0 ),             /* DE Germany */
+    WICED_COUNTRY_EUROPEAN_WIDE_REV895                            = MK_CNTRY( 'E', '0', 895 ),           /* E0 European_Wide Revision 895 */
     WICED_COUNTRY_GHANA                                           = MK_CNTRY( 'G', 'H', 0 ),             /* GH Ghana */
     WICED_COUNTRY_GIBRALTAR                                       = MK_CNTRY( 'G', 'I', 0 ),             /* GI Gibraltar */
     WICED_COUNTRY_GREECE                                          = MK_CNTRY( 'G', 'R', 0 ),             /* GR Greece */
@@ -911,6 +936,18 @@ typedef enum
     WICED_COUNTRY_ZAMBIA                                          = MK_CNTRY( 'Z', 'M', 0 ),             /* ZM Zambia */
     WICED_COUNTRY_ZIMBABWE                                        = MK_CNTRY( 'Z', 'W', 0 ),             /* ZW Zimbabwe */
 } wiced_country_code_t;
+
+/**
+ * Enumerated list of aggregate codes and edit WICED_COUNTRY_AGGREGATE_CUSTOMER for supporting new aggregate
+ * as per customer like XZ/278
+ */
+typedef enum
+{
+    WICED_COUNTRY_AGGREGATE_XA_0                                   = MK_CNTRY( 'X', 'A', 0 ),
+    WICED_COUNTRY_AGGREGATE_XT_0                                   = MK_CNTRY( 'X', 'T', 0 ),
+    WICED_COUNTRY_AGGREGATE_XV_0                                   = MK_CNTRY( 'X', 'V', 0 ),
+    WICED_COUNTRY_AGGREGATE_CUSTOMER                               = MK_CNTRY( 'X', 'Z', 278 ),
+} wiced_aggregate_code_t;
 
 /* WICED Radio Resource Management Report Types */
 typedef enum

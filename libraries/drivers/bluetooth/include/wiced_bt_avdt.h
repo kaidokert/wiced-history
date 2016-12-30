@@ -551,8 +551,14 @@ typedef uint8_t wiced_bt_avdt_data_opt_mask_t;
 *****************************************************************************/
 
 /**
- * @addtogroup  wicedbt_avdt        Audio / Video Distribution (AVDTP)
- * @ingroup     wicedbt_av
+ *
+ * @defgroup   wicedbt_av_protocols Audio/Video-related Transport Protocols
+ * @ingroup    wicedbt_av
+ *
+ * @defgroup   wicedbt_avdtp A/V Distribution Transport Protocol
+ * @ingroup    wicedbt_av_protocols
+ *
+ * @addtogroup  wicedbt_avdtp        Audio / Video Distribution Transport Protocol (AVDTP)
  *
  * Audio/Video Distribution
  *

@@ -102,7 +102,7 @@ void devif_iob_send(FAR struct net_driver_s *dev, FAR struct iob_s *iob,
   DEBUGASSERT(dev && len > 0 && len < NET_DEV_MTU(dev));
 
   /* Copy the data from the I/O buffer chain to the device buffer */
-
+  // syslog(LOG_ERR, "   -devif_iob_send: %d\n", len);
   iob_copyout(dev->d_appdata, iob, len, offset);
   dev->d_sndlen = len;
 

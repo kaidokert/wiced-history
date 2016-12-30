@@ -112,7 +112,7 @@
 
 #ifdef CONFIG_NET_PKTINFO
 /* Options for use with [gs]etsockopt at the IP level. */
-//#define IP_TOS          1
+#define IP_TOS          1
 #define IP_TTL          2
 //#define IP_HDRINCL      3
 //#define IP_OPTIONS      4
@@ -133,7 +133,6 @@
 #define IP_ADD_MEMBERSHIP   35
 #define IP_DROP_MEMBERSHIP  36
 
-#define IPV6_PKTINFO        50
 
 /* control message flag for PKTINFO */
 #define IP_CMSG_PKTINFO         1
@@ -141,9 +140,86 @@
 /* flags for msg_flags in msghdr */
 #endif /* CONFIG_NET_PKTINFO */
 
-/****************************************************************************
- * Public Type Definitions
- ****************************************************************************/
+/*
+ *  IPV6 socket options
+ */
+#define IPV6_ADDRFORM       1
+#define IPV6_2292PKTINFO    2
+#define IPV6_2292HOPOPTS    3
+#define IPV6_2292DSTOPTS    4
+#define IPV6_2292RTHDR      5
+#define IPV6_2292PKTOPTIONS 6
+#define IPV6_CHECKSUM       7
+#define IPV6_2292HOPLIMIT   8
+#define IPV6_NEXTHOP        9
+#define IPV6_AUTHHDR        10  /* obsolete */
+#define IPV6_FLOWINFO       11
+
+#define IPV6_UNICAST_HOPS   16
+#define IPV6_MULTICAST_IF   17
+#define IPV6_MULTICAST_HOPS 18
+#define IPV6_MULTICAST_LOOP 19
+#define IPV6_ADD_MEMBERSHIP 20
+#define IPV6_DROP_MEMBERSHIP    21
+#define IPV6_ROUTER_ALERT   22
+#define IPV6_MTU_DISCOVER   23
+#define IPV6_MTU            24
+#define IPV6_RECVERR        25
+#define IPV6_V6ONLY         26
+#define IPV6_JOIN_ANYCAST   27
+#define IPV6_LEAVE_ANYCAST  28
+
+#define IPV6_PKTINFO        50
+
+#define IPV6_RECVTCLASS     66
+#define IPV6_TCLASS         67 /* Advanced API (RFC3542) */
+
+
+#define IPV6_JOIN_GROUP  IPV6_ADD_MEMBERSHIP
+#define IPV6_LEAVE_GROUP IPV6_DROP_MEMBERSHIP
+
+/*
+ * Unspecified
+ */
+#define IN6_IS_ADDR_UNSPECIFIED(a)      \
+        ((a)->in6_u.u6_addr32[0] == 0 &&  \
+         (a)->in6_u.u6_addr32[1] == 0 &&  \
+         (a)->in6_u.u6_addr32[2] == 0 &&  \
+         (a)->in6_u.u6_addr32[3] == 0)
+
+/*
+ * Loopback
+ */
+#define IN6_IS_ADDR_LOOPBACK(a)         \
+        ((a)->in6_u.u6_addr32[0] == 0 &&  \
+         (a)->in6_u.u6_addr32[1] == 0 &&  \
+         (a)->in6_u.u6_addr32[2] == 0 &&  \
+         (a)->in6_u.u6_addr32[3] == ntohl(1))
+/*
+ * Link local
+ */
+#define  IN6_IS_ADDR_LINKLOCAL(a)       \
+        ((a)->in6_u.u6_addr8[0] == 0xfe && \
+        ((a)->in6_u.u6_addr8[1] & 0xc0) == 0x80)
+
+ /*
+  * IPv4 compatible
+  */
+#define IN6_IS_ADDR_V4COMPAT(a)         \
+        ((a)->in6_u.u6_addr32[0] == 0 &&  \
+         (a)->in6_u.u6_addr32[1] == 0 &&  \
+         (a)->in6_u.u6_addr32[2] == 0 &&  \
+         (a)->in6_u.u6_addr32[3] != 0 &&  \
+         (a)->in6_u.u6_addr32[3] != ntohl(1))
+
+ /*
+  * Mapped
+  */
+#define IN6_IS_ADDR_V4MAPPED(a)               \
+        ((a)->in6_u.u6_addr32[0] == 0 &&  \
+         (a)->in6_u.u6_addr32[1] == 0 &&  \
+         (a)->in6_u.u6_addr32[2] == ntohl(0x0000ffff))
+
 
 /****************************************************************************
  * Public Type Definitions
@@ -207,6 +283,12 @@ struct in6_pktinfo
   int             ipi6_ifindex;
 };
 
+struct ipv6_mreq
+{
+  struct in6_addr ipv6mr_multiaddr;  /* IPv6 multicast address of group */
+  int             ipv6mr_interface;  /* local IPv6 address of interface */
+};
+
 /****************************************************************************
  * Public Data
  ****************************************************************************/
@@ -223,6 +305,7 @@ extern "C"
 /* Global IPv6 in6addr_any */
 
 EXTERN const struct in6_addr in6addr_any;
+EXTERN const struct in6_addr in6addr_loopback;
 
 /****************************************************************************
  * Public Function Prototypes

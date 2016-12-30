@@ -49,6 +49,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <debug.h>
 
 #include <nuttx/net/iob.h>
 
@@ -61,18 +62,6 @@
 #ifndef MIN
 #  define MIN(a,b) ((a) < (b) ? (a) : (b))
 #endif
-
-/****************************************************************************
- * Private Types
- ****************************************************************************/
-
-/****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
- * Public Data
- ****************************************************************************/
 
 /****************************************************************************
  * Public Functions
@@ -101,6 +90,12 @@ int iob_copyout(FAR uint8_t *dest, FAR const struct iob_s *iob,
     {
       offset -= iob->io_len;
       iob     = iob->io_flink;
+      if (iob == NULL)
+        {
+          /* We have no requested data in iob chain */
+
+          return 0;
+        }
     }
 
   /* Then loop until all of the I/O data is copied to the user buffer */
@@ -132,6 +127,5 @@ int iob_copyout(FAR uint8_t *dest, FAR const struct iob_s *iob,
       iob = iob->io_flink;
       offset = 0;
     }
-
   return len - remaining;
 }

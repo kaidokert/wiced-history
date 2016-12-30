@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -19,10 +42,7 @@
 #include "waf_platform.h"
 #include "wiced_framework.h"
 #include "wiced_dct_common.h"
-#include "wiced_apps_common.h"
-#include "platform_mcu_peripheral.h"
-#include "elf.h"
-#include "../../../libraries/utilities/crc/crc.h"
+#include "wiced_ota2_image.h"
 
 #if !defined(BOOTLOADER)
 
@@ -88,30 +108,68 @@ wiced_result_t wiced_dct_ota2_save_copy( uint8_t type )
 {
 
     /* copy current DCT to OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE
-     * Change the values for factory_reset and update_count
+     * Change the values for boot_type and update_count
      * to reflect the update type
      */
 
     platform_dct_ota2_config_t  ota2_dct_header;
+    ota2_boot_type_t            saved_boot_type = OTA2_BOOT_NORMAL;
+    /*
+     * Check if saved DCT is from a FACTORY_RESET or UPDATE. If so, Don't copy over.
+     * This is so that if we get multiple resets during an extract, we don't trash the user settings that
+     * were initially saved on the first extraction try.
+     *
+     * NOTE: Application MUST save to saved DCT copy with boot type as "NORMAL" after extraction for this to work.
+     *       see snip/ota2_example/ota2_test.c
+     *
+     *       over_the_air_2_app_restore_settings_after_update(player);
+     *
+     *       //Set the reboot type back to normal so we don't think we updated on the next reboot
+     *       wiced_dct_ota2_save_copy( OTA2_BOOT_NORMAL );
+     *
+     */
 
-    /* App */
+    /* we are trying to save the DCT for a Factory Reset or an UPDATE - make sure we haven't done so already! */
+    if (wiced_dct_ota2_read_saved_copy( &ota2_dct_header, DCT_OTA2_CONFIG_SECTION, 0, sizeof(platform_dct_ota2_config_t)) == WICED_SUCCESS)
+    {
+        saved_boot_type = ota2_dct_header.boot_type;
+    }
+
+    /* Load the current ota2 structure in the current DCT
+     * NOTE: this over-writes the read from the save area, we got the value we wanted
+     */
     if (wiced_dct_read_with_copy( (void**)&ota2_dct_header, DCT_OTA2_CONFIG_SECTION, 0, sizeof(platform_dct_ota2_config_t) ) != WICED_SUCCESS )
     {
         return WICED_ERROR;
     }
 
-    /* what type of update are we about to do ? */
+    /* If we are saving an "Update" or Factory Reset" type, and
+     *    If the saved DCT boot_type != NORMAL, we are in the middle of an extraction
+     *       Do not copy the DCT to the saved area, as we have already done so!
+     */
+    if ((type != OTA2_BOOT_NORMAL) && (saved_boot_type != OTA2_BOOT_NORMAL))
+    {
+        /* Do not copy onto an already "saved" DCT */
+        WPRINT_LIB_INFO(("Do not copy over Saved DCT.\r\n"));
+        return WICED_SUCCESS;
+    }
+
+    /* update boot type */
     ota2_dct_header.boot_type  = type;
     ota2_dct_header.update_count++;
 
     if (wiced_dct_write( (void**)&ota2_dct_header, DCT_OTA2_CONFIG_SECTION, 0, sizeof(platform_dct_ota2_config_t) ) != WICED_SUCCESS)
     {
+        WPRINT_LIB_INFO(("Update Current DCT to boot_type %d FAILED.\r\n", type));
         return WICED_ERROR;
     }
 
+    WPRINT_LIB_INFO(("Copy Current DCT to Saved DCT.\r\n"));
+
     /* erase DCT copy area and copy current DCT */
-    if (wiced_dct_ota2_erase_save_area_and_copy_dct( OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE) != WICED_SUCCESS)
+    if (wiced_dct_ota2_erase_save_area_and_copy_dct( OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE ) != WICED_SUCCESS)
     {
+        WPRINT_LIB_INFO(("Copy Current DCT to Saved DCT FAILED.\r\n"));
         return WICED_ERROR;
     }
 
@@ -121,19 +179,21 @@ wiced_result_t wiced_dct_ota2_save_copy( uint8_t type )
 
 wiced_result_t wiced_dct_ota2_read_saved_copy( void* info_ptr, dct_section_t section, uint32_t offset, uint32_t size )
 {
-    platform_dct_header_t   dct_header;
-    uint32_t                curr_dct, curr_dct_end;
+    wiced_dct_sdk_ver_t     sdk_dct_version = DCT_BOOTLOADER_SDK_UNKNOWN;
 
-    /* do standard checks to see if the DCT copy before an update is valid */
-    curr_dct = (uint32_t) OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE;
-    curr_dct_end = curr_dct + (uint32_t)PLATFORM_DCT_COPY1_SIZE;
-    memcpy(&dct_header, (char *)OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE, sizeof(platform_dct_header_t));
-
-    if ( ( dct_header.write_incomplete == 0 ) &&
-         ( dct_header.magic_number == BOOTLOADER_MAGIC_NUMBER ) &&
-         ( ((dct_header.initial_write == 1) && (dct_header.crc32 == 0x00)) ||
-           (wiced_dct_ota2_check_crc_valid(curr_dct, curr_dct_end) == WICED_TRUE)) )
+    if (info_ptr == NULL)
     {
+        return WICED_BADARG;
+    }
+
+/* do standard checks to see if the DCT copy is valid */
+    sdk_dct_version = wiced_dct_validate_and_determine_version(OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE, OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE + PLATFORM_DCT_COPY1_SIZE, NULL, NULL);
+    /* SDK version must be > SDK-3.5.2, as that is the first SDK with OTA2 */
+    if ( (sdk_dct_version != DCT_BOOTLOADER_SDK_UNKNOWN) && (sdk_dct_version > DCT_BOOTLOADER_SDK_3_5_2))
+    {
+        uint32_t                curr_dct;
+
+        /* read the portion the caller asked for */
         curr_dct = (uint32_t) OTA2_IMAGE_APP_DCT_SAVE_AREA_BASE + DCT_section_offsets[ section ];
         memcpy(info_ptr, (char *)(curr_dct + offset), size);
         return WICED_SUCCESS;

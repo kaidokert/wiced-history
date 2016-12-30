@@ -663,3 +663,8 @@ config W25_SLOWREAD
 	default n
 
 endif
+
+config MTD_MACRONIX
+	bool "SPI-based MACRONIX FLASH (MX25L6433F)"
+	default n
+	select SPI

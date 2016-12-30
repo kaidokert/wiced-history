@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -61,12 +84,6 @@
 #define PLATFORM_WLAN_DMA_RX_UNDERFLOW_THRESH        3
 #endif
 
-#ifndef PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
-#define PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS    10
-#endif
-
-#define PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_INVALID_MS  ((uint32_t)-1)
-
 /******************************************************
  *             Structures
  ******************************************************/
@@ -82,16 +99,6 @@ static uint32_t fake_backplane_window_addr                              = 0;
 static volatile wiced_bool_t refill_underflow                           = WICED_FALSE;
 static volatile wiced_bool_t resource_download_aborted                  = WICED_FALSE;
 
-#if PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
-static wwd_time_t delayed_bus_release_deadline                          = 0;
-static wiced_bool_t delayed_bus_release_scheduled                       = WICED_FALSE;
-static uint32_t delayed_bus_release_timeout_ms                          = PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS;
-static volatile uint32_t delayed_bus_release_timeout_ms_request         = PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_INVALID_MS;
-#define DELAYED_BUS_RELEASE_SCHEDULE(schedule) do { delayed_bus_release_scheduled = schedule; delayed_bus_release_deadline = 0; } while(0)
-#else
-#define DELAYED_BUS_RELEASE_SCHEDULE(schedule) do {} while(0)
-#endif
-
 /******************************************************
  *             Function declarations
  ******************************************************/
@@ -103,6 +110,10 @@ static void write_reset_instruction( uint32_t reset_inst );
 /******************************************************
  *             Function definitions
  ******************************************************/
+wiced_bool_t wwd_bus_is_up( void )
+{
+    return bus_is_up;
+}
 
 wwd_result_t wwd_bus_send_buffer( wiced_buffer_t buffer )
 {
@@ -166,6 +177,11 @@ wwd_result_t wwd_bus_deinit( void )
     DELAYED_BUS_RELEASE_SCHEDULE( WICED_FALSE );
 
     return WWD_SUCCESS;
+}
+
+wiced_bool_t wwd_bus_platform_mcu_power_save_deep_sleep_enabled( void )
+{
+    return platform_mcu_powersave_is_permitted( ) && ( platform_mcu_powersave_get_mode( ) == PLATFORM_MCU_POWERSAVE_MODE_DEEP_SLEEP );
 }
 
 uint32_t wwd_bus_packet_available_to_read(void)
@@ -298,80 +314,6 @@ wiced_bool_t wwd_bus_is_flow_controlled( void )
     return wwd_bus_flow_controlled;
 }
 
-void platform_wlan_powersave_set_delayed_release_milliseconds( uint32_t time_ms )
-{
-#if PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
-
-    delayed_bus_release_timeout_ms_request = time_ms;
-    wwd_thread_notify( );
-
-#else
-
-    UNUSED_PARAMETER( time_ms );
-
-#endif /* PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS */
-}
-
-static uint32_t wwd_handle_delayed_bus_release( void )
-{
-    uint32_t time_until_release = 0;
-
-#if PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
-
-    if ( delayed_bus_release_timeout_ms_request != PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_INVALID_MS )
-    {
-        wiced_bool_t schedule = ( ( delayed_bus_release_scheduled != 0 ) || ( delayed_bus_release_deadline != 0 ) ) ? WICED_TRUE : WICED_FALSE;
-        uint32_t     flags;
-
-        WICED_SAVE_INTERRUPTS( flags );
-        delayed_bus_release_timeout_ms         = delayed_bus_release_timeout_ms_request;
-        delayed_bus_release_timeout_ms_request = PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_INVALID_MS;
-        WICED_RESTORE_INTERRUPTS( flags );
-
-        DELAYED_BUS_RELEASE_SCHEDULE( schedule );
-    }
-
-    if ( delayed_bus_release_scheduled )
-    {
-        delayed_bus_release_scheduled = WICED_FALSE;
-
-        if ( delayed_bus_release_timeout_ms != 0 )
-        {
-            delayed_bus_release_deadline = host_rtos_get_time() + delayed_bus_release_timeout_ms;
-            time_until_release = delayed_bus_release_timeout_ms;
-        }
-    }
-    else if ( delayed_bus_release_deadline )
-    {
-        wwd_time_t now = host_rtos_get_time( );
-
-        if ( delayed_bus_release_deadline - now <= delayed_bus_release_timeout_ms )
-        {
-            time_until_release = delayed_bus_release_deadline - now;
-        }
-
-        if ( time_until_release == 0 )
-        {
-            delayed_bus_release_deadline = 0;
-        }
-    }
-
-    if ( time_until_release != 0 )
-    {
-        if ( !bus_is_up )
-        {
-            time_until_release = 0;
-        }
-        else if ( platform_mcu_powersave_is_permitted( ) && (platform_mcu_powersave_get_mode( ) == PLATFORM_MCU_POWERSAVE_MODE_DEEP_SLEEP ) )
-        {
-            time_until_release = 0;
-        }
-    }
-#endif /* PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS */
-
-    return time_until_release;
-}
-
 void wwd_wait_for_wlan_event( host_semaphore_type_t* transceive_semaphore )
 {
     uint32_t timeout_ms = 1;
@@ -380,7 +322,7 @@ void wwd_wait_for_wlan_event( host_semaphore_type_t* transceive_semaphore )
 
     REFERENCE_DEBUG_ONLY_VARIABLE( result );
 
-    delayed_release_timeout_ms = wwd_handle_delayed_bus_release( );
+    delayed_release_timeout_ms = wwd_bus_handle_delayed_release( );
     if ( delayed_release_timeout_ms != 0 )
     {
         timeout_ms = delayed_release_timeout_ms;

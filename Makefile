@@ -1,11 +1,33 @@
 #
-# Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
-# All Rights Reserved.
-#
-# This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
-# the contents of this file may not be disclosed to third parties, copied
-# or duplicated in any form, in whole or in part, without the prior
-# written permission of Broadcom Corporation.
+# Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ # Cypress Semiconductor Corporation. All Rights Reserved.
+ # This software, including source code, documentation and related
+ # materials ("Software"), is owned by Cypress Semiconductor Corporation
+ # or one of its subsidiaries ("Cypress") and is protected by and subject to
+ # worldwide patent protection (United States and foreign),
+ # United States copyright laws and international treaty provisions.
+ # Therefore, you may use this Software only as provided in the license
+ # agreement accompanying the software package from which you
+ # obtained this Software ("EULA").
+ # If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ # non-transferable license to copy, modify, and compile the Software
+ # source code solely for use in connection with Cypress's
+ # integrated circuit products. Any reproduction, modification, translation,
+ # compilation, or representation of this Software except as specified
+ # above is prohibited without the express written permission of Cypress.
+ #
+ # Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ # EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ # reserves the right to make changes to the Software without notice. Cypress
+ # does not assume any liability arising out of the application or use of the
+ # Software or any product or circuit described in the Software. Cypress does
+ # not authorize its products for use in any products where a malfunction or
+ # failure of the Cypress product may reasonably be expected to result in
+ # significant property damage, injury or death ("High Risk Product"). By
+ # including Cypress's product in a High Risk Product, the manufacturer
+ # of such system or application assumes all risk of such use and in doing
+ # so agrees to indemnify Cypress against all liability.
 #
 
 default: Help
@@ -100,7 +122,12 @@ Usage: make <target> [download] [run | debug] [JTAG=xxx] [no_dct]
                             download : Download the image after creation
 
 	Working with OTA2 Support - This is an alternate to OTA support - do not mix them
-	  $> make snip.over_the_air_2_example-BCM934907AWE_1.B0 download [ota2_image run | ota2_download] [ota2_factory | ota2_factory_download]
+	  First, build the extraction application that is part of the OTA2 system
+	         This only needs to be built once after you "make clean" (unless you are modifying the OTA2 libraries)
+	  $> make snip.ota2_extract-<platform>
+
+	  Now you can build the Application
+	  $> make snip.ota2_example-<platform> download download_apps run [ota2_image | ota2_download] [ota2_factory_image | ota2_factory_download]
 
 		where:	ota2_image             : Build an OTA2 Upgrade Image, save in build/<application_dir>/OTA2_image_file.bin
 										 This is an OTA2 Image file suitable for storage on an update server for downloading.
@@ -111,13 +138,13 @@ Usage: make <target> [download] [run | debug] [JTAG=xxx] [no_dct]
 										   system to see the bootloader extract the image.
                 ota2_factory_image     : Build an OTA2 Factory Reset Image
 										 This is an OTA2 Image file suitable for storage in FLASH at manufacturing as the Factory Reset Image
-										 - This is the OTA2 Image used when you hold the "factory reset" button for 5 seconds during boot.
+										 - This is the OTA2 Image used when you hold the "factory reset" button during boot.
                 ota2_factory_download  : Build an OTA2 Factory Reset Image + write to FLASH
-										 - This is used to test the OTA2 Factory Reset Imagefile by putting the file in the area it would
-										   be during manufacture. In the example code, hold teh "factory reset" button during reboot and the
+										 - This is used to load the OTA2 Factory Reset Image file by putting the file in the area it would
+										   be during manufacture. In the example code, hold the "factory reset" button during reboot and the
 										   bootloader will extract the Image.
 
-    Build an Over The Air (OTA) in-field upgrade for an older SDK (SDK-3.6.3 and up)
+    Build an Over The Air 2 (OTA2) in-field upgrade for an older SDK (SDK-3.6.3 and up)
     	The Bootloader is never updated. Match parts of the DCT with the older SDK Bootloader
 
       $> make snip.ping-BCM943362WCD4 UPDATE_FROM_SDK=X_X_X <APP_USED_BT=1> <APP_USED_P2P=1> <APP_USED_OTA2=1>
@@ -128,6 +155,7 @@ Usage: make <target> [download] [run | debug] [JTAG=xxx] [no_dct]
                             3_4_0
                             3_5_1   3_5_2
                             3_6_0   3_6_1   3_6_2
+                            3_7_0
             Optional additions - Must match original app compilation to match these DCT sections
             	APP_USED_BT=1		If Original Applciation used Bluetooth
             						 That is, this was added to <application>.mk file:
@@ -137,6 +165,17 @@ Usage: make <target> [download] [run | debug] [JTAG=xxx] [no_dct]
 										GLOBAL_DEFINES += WICED_DCT_INCLUDE_P2P_CONFIG
             	APP_USED_OTA2=1		If Original Applciation used OTA2
             						 That is, if the command line build included "ota2_xxx" as described for OTA2 builds above
+
+			Define the Application Version for the OTA2 Image File by adding these to the build command
+				APP_VERSION_FOR_OTA2_MAJOR=X
+				APP_VERSION_FOR_OTA2_MINOR=Y
+
+			For an initial product release:
+				<application>-<platform> ota2_factory_download download download_apps run APP_VERSION_FOR_OTA2_MAJOR=1 APP_VERSION_FOR_OTA2_MINOR=0
+
+			For an update OTA2 Image suitable for placing on an update server:
+				<application>-<platform> ota2_image APP_VERSION_FOR_OTA2_MAJOR=1 APP_VERSION_FOR_OTA2_MINOR=2
+
 endef
 
 ############################

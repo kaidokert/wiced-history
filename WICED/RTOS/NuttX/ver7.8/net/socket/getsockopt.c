@@ -42,6 +42,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <errno.h>
 
 #include "socket/socket.h"
@@ -141,7 +142,7 @@ int psock_getsockopt(FAR struct socket *psock, int level, int option,
            */
 
           optionset    = psock->s_options;
-          *(int*)value = _SO_GETOPT(optionset, option);
+          *(FAR int *)value = _SO_GETOPT(optionset, option);
           *value_len   = sizeof(int);
         }
         break;
@@ -160,7 +161,7 @@ int psock_getsockopt(FAR struct socket *psock, int level, int option,
 
           /* Return the socket type */
 
-          *(int*)value = psock->s_type;
+          *(FAR int *)value = psock->s_type;
           *value_len   = sizeof(int);
         }
         break;

@@ -56,10 +56,6 @@
 
 struct neighbor_entry g_neighbors[CONFIG_NET_IPv6_NCONF_ENTRIES];
 
-/* This is the time, in clock ticks, of the last poll */
-
-uint32_t g_neighbor_polltime;
-
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -68,7 +64,10 @@ uint32_t g_neighbor_polltime;
  * Name: neighbor_initialize
  *
  * Description:
- *  Initialize Neighbor table support
+ *   Initialize Neighbor table data structures.  This function is called
+ *   prior to platform-specific driver initialization so that the networking
+ *   subsystem is prepared to deal with network driver initialization
+ *   actions.
  *
  * Input Parameters:
  *   None
@@ -86,8 +85,4 @@ void neighbor_initialize(void)
     {
       g_neighbors[i].ne_time = NEIGHBOR_MAXTIME;
     }
-
-  /* Initialize the time of the last poll */
-
-   g_neighbor_polltime = clock_systimer();
 }

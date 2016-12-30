@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/tcp/tcp_netpoll.c
  *
- *   Copyright (C) 2008-2009, 2011-2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2008-2009, 2011-2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -88,8 +88,8 @@ struct tcp_poll_s
  *
  ****************************************************************************/
 
-static uint16_t tcp_poll_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
-                                   FAR void *pvpriv, uint16_t flags)
+static uint32_t tcp_poll_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
+                                   FAR void *pvpriv, uint32_t flags)
 {
   FAR struct tcp_poll_s *info = (FAR struct tcp_poll_s *)pvpriv;
 
@@ -119,15 +119,15 @@ static uint16_t tcp_poll_interrupt(FAR struct net_driver_s *dev, FAR void *conn,
 
       /* Check for a loss of connection events. */
 
-      if ((flags & (TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT)) != 0)
+      if ((flags & TCP_DISCONN_EVENTS) != 0)
         {
-          /* Marki that the connection has been lost */
+          /* Mark that the connection has been lost */
 
           net_lostconnection(info->psock, flags);
           eventset |= (POLLERR | POLLHUP);
         }
 
-      /* Awaken the caller of poll() is requested event occurred. */
+      /* Awaken the caller of poll() if requested event occurred. */
 
       if (eventset)
         {
@@ -208,13 +208,12 @@ int tcp_pollsetup(FAR struct socket *psock, FAR struct pollfd *fds)
    * callback processing.
    */
 
-  cb->flags    = (TCP_NEWDATA | TCP_BACKLOG | TCP_POLL | TCP_CLOSE |
-                  TCP_ABORT | TCP_TIMEDOUT);
+  cb->flags    = (TCP_NEWDATA | TCP_BACKLOG | TCP_POLL | TCP_DISCONN_EVENTS);
   cb->priv     = (FAR void *)info;
   cb->event    = tcp_poll_interrupt;
 
   /* Save the reference in the poll info structure as fds private as well
-   * for use durring poll teardown as well.
+   * for use during poll teardown as well.
    */
 
   fds->priv    = (FAR void *)info;
@@ -282,6 +281,10 @@ int tcp_pollsetup(FAR struct socket *psock, FAR struct pollfd *fds)
        */
 
       fds->revents |= (POLLERR | POLLHUP);
+    }
+  else if (_SS_ISCONNECTED(psock->s_flags) && psock_tcp_cansend(psock) >= 0)
+    {
+      fds->revents |= (POLLWRNORM & fds->events);
     }
 
   /* Check if any requested events are already in effect */

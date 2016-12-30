@@ -104,7 +104,7 @@ int pkt_input(struct net_driver_s *dev)
   conn = pkt_active(pbuf);
   if (conn)
     {
-      uint16_t flags;
+      uint32_t flags;
 
       /* Setup for the application callback */
 

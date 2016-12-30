@@ -69,22 +69,6 @@
 #define ICMPBUF ((struct icmp_iphdr_s *)&dev->d_buf[NET_LL_HDRLEN(dev)])
 
 /****************************************************************************
- * Public Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-#ifdef CONFIG_NET_ICMP_PING
-FAR struct devif_callback_s *g_icmp_echocallback = NULL;
-#endif
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -121,18 +105,6 @@ void icmp_input(FAR struct net_driver_s *dev)
 
   if (picmp->type == ICMP_ECHO_REQUEST)
     {
-      /* If we are configured to use ping IP address assignment, we use
-       * the destination IP address of this ping packet and assign it to
-       * ourself.
-       */
-
-#ifdef CONFIG_NET_PINGADDRCONF
-      if (dev->d_ipaddr == 0)
-        {
-          dev->d_ipaddr = picmp->destipaddr;
-        }
-#endif
-
       /* Change the ICMP type */
 
       picmp->type = ICMP_ECHO_REPLY;
@@ -182,9 +154,9 @@ void icmp_input(FAR struct net_driver_s *dev)
    */
 
 #ifdef CONFIG_NET_ICMP_PING
-  else if (picmp->type == ICMP_ECHO_REPLY && g_icmp_echocallback)
+  else if (picmp->type == ICMP_ECHO_REPLY && dev->d_conncb)
     {
-      (void)devif_callback_execute(dev, picmp, ICMP_ECHOREPLY, g_icmp_echocallback);
+      (void)devif_conn_event(dev, picmp, ICMP_ECHOREPLY, dev->d_conncb);
     }
 #endif
 

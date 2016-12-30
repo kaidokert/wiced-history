@@ -43,6 +43,10 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 
+#ifdef __NUTTX__
+#include <arpa/inet.h>
+#endif
+
 /****************************************************************************
  * Definitions
  ****************************************************************************/
@@ -60,6 +64,7 @@
 #define PF_INET6        3 /* IPv6 Internet protocols */
 #define PF_IPX          4 /* IPX - Novell protocols */
 #define PF_NETLINK      5 /* Kernel user interface device */
+  #define PF_ROUTE      PF_NETLINK
 #define PF_X25          6 /* ITU-T X.25 / ISO-8208 protocol */
 #define PF_AX25         7 /* Amateur radio AX.25 protocol */
 #define PF_ATMPVC       8 /* Access to raw ATM PVCs */
@@ -75,6 +80,7 @@
 #define AF_INET6       PF_INET6
 #define AF_IPX         PF_IPX
 #define AF_NETLINK     PF_NETLINK
+  #define AF_ROUTE     AF_NETLINK
 #define AF_X25         PF_X25
 #define AF_AX25        PF_AX25
 #define AF_ATMPVC      PF_ATMPVC
@@ -156,6 +162,16 @@
 
 #define SOL_SOCKET     1  /* Support IP and socket-level options */
 
+/* Maximum queue length specifiable by listen.  */
+
+#define SOMAXCONN      128
+
+/* Values for the 'how' argument of shutdown() */
+
+#define SHUT_RD        1  /* Bit 0: Disables further receive operations */
+#define SHUT_WR        2  /* Bit 1: Disables further send operations */
+#define SHUT_RDWR      3  /* Bits 0+1: Disables further send and receive operations */
+
 /****************************************************************************
  * Type Definitions
  ****************************************************************************/
@@ -171,7 +187,7 @@
 struct sockaddr_storage
 {
   sa_family_t ss_family;       /* Address family */
-  char        ss_data[18];     /* 18-bytes of address data */
+  char        ss_data[22];     /* 22-bytes of address data */
 };
 #else
 struct sockaddr_storage
@@ -243,6 +259,8 @@ struct cmsghdr {
     int            cmsg_type;       /* protocol-specific type */
 };
 
+#define SCM_RIGHTS (0x01)           /* Transfer file descriptors.  */
+
 /* given pointer to struct cmsghdr, return pointer to data */
 #define CMSG_DATA(cmsg)     ((void *)((cmsg) + 1))
 
@@ -294,12 +312,17 @@ ssize_t recvfrom(int sockfd, FAR void *buf, size_t len, int flags,
                  FAR struct sockaddr *from, FAR socklen_t *fromlen);
 ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
 
+int shutdown(int sockfd, int how);
+
 int setsockopt(int sockfd, int level, int option,
                FAR const void *value, socklen_t value_len);
 int getsockopt(int sockfd, int level, int option,
                FAR void *value, FAR socklen_t *value_len);
 
 int getsockname(int sockfd, FAR struct sockaddr *addr,
+                FAR socklen_t *addrlen);
+
+int getpeername(int sockfd, FAR struct sockaddr *addr,
                 FAR socklen_t *addrlen);
 
 #undef EXTERN

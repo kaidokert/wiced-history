@@ -65,7 +65,7 @@
  * Reference: Opengroup.org
  */
 
-#define offsetof(a,b) ((size_t)(&(((a *)(0))->b)))
+#define offsetof(a,b) __builtin_offsetof(a,b)
 
 /****************************************************************************
  * Type Definitions

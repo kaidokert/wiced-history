@@ -54,10 +54,6 @@
 #include "tcp/tcp.h"
 
 /****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
  * Private Functions
  ****************************************************************************/
 
@@ -75,11 +71,11 @@
  *
  ****************************************************************************/
 
-static inline uint16_t
+static inline uint32_t
 tcp_data_event(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
-               uint16_t flags)
+               uint32_t flags)
 {
-  uint16_t ret;
+  uint32_t ret;
 
   /* Assume that we will ACK the data.  The data will be ACKed if it is
    * placed in the read-ahead buffer -OR- if it zero length
@@ -147,16 +143,16 @@ tcp_data_event(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
  *
  ****************************************************************************/
 
-uint16_t tcp_callback(FAR struct net_driver_s *dev,
-                      FAR struct tcp_conn_s *conn, uint16_t flags)
+uint32_t tcp_callback(FAR struct net_driver_s *dev,
+                      FAR struct tcp_conn_s *conn, uint32_t flags)
 {
   /* Preserve the TCP_ACKDATA, TCP_CLOSE, and TCP_ABORT in the response.
-   * These is needed by uIP to handle responses and buffer state.  The
+   * These is needed by the network to handle responses and buffer state.  The
    * TCP_NEWDATA indication will trigger the ACK response, but must be
    * explicitly set in the callback.
    */
 
-  nllvdbg("flags: %04x\n", flags);
+  nllvdbg("flags: %08x\n", flags);
 
   /* Perform the data callback.  When a data callback is executed from 'list',
    * the input flags are normally returned, however, the implementation
@@ -177,7 +173,7 @@ uint16_t tcp_callback(FAR struct net_driver_s *dev,
    *                 dev->d_len should also be cleared).
    */
 
-  flags = devif_callback_execute(dev, conn, flags, conn->list);
+  flags = devif_conn_event(dev, conn, flags, conn->list);
 
   /* There may be no new data handler in place at them moment that the new
    * incoming data is received.  If the new incoming data was not handled, then
@@ -201,7 +197,8 @@ uint16_t tcp_callback(FAR struct net_driver_s *dev,
     {
       /* Perform the callback */
 
-      conn->connection_event(conn, flags);
+      flags = conn->connection_event(dev, conn, conn->connection_private,
+                                     flags);
     }
 
   return flags;
@@ -253,7 +250,6 @@ uint16_t tcp_datahandler(FAR struct tcp_conn_s *conn, FAR uint8_t *buffer,
     }
 
   /* Copy the new appdata into the I/O buffer chain (without waiting) */
-
   ret = iob_trycopyin(iob, buffer, buflen, 0, true);
   if (ret < 0)
     {
@@ -277,7 +273,6 @@ uint16_t tcp_datahandler(FAR struct tcp_conn_s *conn, FAR uint8_t *buffer,
       (void)iob_free_chain(iob);
       return 0;
     }
-
   nllvdbg("Buffered %d bytes\n", buflen);
   return buflen;
 }

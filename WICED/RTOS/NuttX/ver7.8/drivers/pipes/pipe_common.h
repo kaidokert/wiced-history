@@ -1,7 +1,7 @@
 /****************************************************************************
  * drivers/pipe/pipe_common.h
  *
- *   Copyright (C) 2008-2009, 2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2008-2009, 2015-2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -109,6 +109,7 @@ struct pipe_dev_s
   pipe_ndx_t d_rdndx;       /* Index in d_buffer to return the next byte read */
   uint8_t    d_refs;        /* References counts on pipe (limited to 255) */
   uint8_t    d_nwriters;    /* Number of reference counts for write access */
+  uint8_t    d_nreaders;    /* Number of reference counts for read access */
   uint8_t    d_pipeno;      /* Pipe minor number */
   uint8_t    d_flags;       /* See PIPE_FLAG_* definitions */
   uint8_t   *d_buffer;      /* Buffer allocated when device opened */
@@ -148,7 +149,9 @@ int     pipecommon_ioctl(FAR struct file *filep, int cmd, unsigned long arg);
 int     pipecommon_poll(FAR struct file *filep, FAR struct pollfd *fds,
                                bool setup);
 #endif
+#ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
 int     pipecommon_unlink(FAR struct inode *priv);
+#endif
 
 #undef EXTERN
 #ifdef __cplusplus

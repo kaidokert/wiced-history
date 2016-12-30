@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/devif/devif.h
  *
- *   Copyright (C) 2007-2009, 2013-2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2013-2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * This logic was leveraged from uIP which also has a BSD-style license:
@@ -51,6 +51,7 @@
 #include <errno.h>
 #include <arch/irq.h>
 
+#include <nuttx/clock.h>
 #include <nuttx/net/ip.h>
 
 /****************************************************************************
@@ -61,6 +62,10 @@
  * TCP_ACKDATA, XYZ_NEWDATA, and TCP_CLOSE flags may be set at the same time,
  * whereas the others are mutually exclusive.
  *
+ * Connection Specific Events:  These are events that may be notified
+ * through callback lists residing in TCP, UDP, or PKT port connection
+ * structures:
+ *
  *   TCP_ACKDATA     IN: Signifies that the outstanding data was ACKed and
  *                       the socket layer should send out new data instead
  *                       of retransmitting the last data (TCP only)
@@ -69,8 +74,7 @@
  *   TCP_NEWDATA     IN: Set to indicate that the peer has sent us new data.
  *   UDP_NEWDATA    OUT: Cleared (only) by the socket layer logic to indicate
  *   PKT_NEWDATA         that the new data was consumed, suppressing further
- *   ICMP_NEWDATA        attempts to process the new data.
- *   ICMPv6_NEWDATA
+ *                        attempts to process the new data.
  *
  *   TCP_SNDACK      IN: Not used; always zero
  *                  OUT: Set by the socket layer if the new data was consumed
@@ -80,12 +84,13 @@
  *                       was last sent. (TCP only)
  *                  OUT: Not used
  *
- *   ARP_POLL       IN:  Used for polling the socket layer.  This is provided
- *   TCP_POLL            periodically from the drivers to support (1) timed
- *   UDP_POLL            operations, and (2) to check if the socket layer has
- *   PKT_POLL            data that it wants to send
- *   ICMP_POLL      OUT: Not used
- *   ICMPv6_POLL
+ *   TCP_POLL        IN:  Used for polling the socket layer.  This is provided
+ *   UDP_POLL             periodically from the drivers to support (1) timed
+ *   PKT_POLL             operations, and (2) to check if the socket layer has
+ *                        data that it wants to send.  These are socket oriented
+ *                        callbacks where the context depends on the specific
+ *                        set
+ *                   OUT: Not used
  *
  *   TCP_BACKLOG     IN: There is a new connection in the backlog list set
  *                       up by the listen() command. (TCP only)
@@ -110,36 +115,92 @@
  *                       retransmissions. (TCP only)
  *                  OUT: Not used
  *
+ * Device Specific Events:  These are events that may be notified through
+ * callback lists residing in the network device structure.
+ *
+ *   ICMP_NEWDATA     IN: Set to indicate that the peer has sent us new data.
+ *   ICMPv6_NEWDATA OUT: Cleared (only) by the socket layer logic to indicate
+ *                       that the new data was consumed, suppressing further
+ *                       attempts to process the new data.
+ *
+ *   ARP_POLL         IN: Used for polling the socket layer.  This is provided
+ *                        periodically from the drivers to support (1) timed
+ *                        operations, and (2) to check if the ARP layer needs
+ *                        to send an ARP request.  This is a device oriented
+ *                        event, not associated with a socket.
+ *                   OUT: Not used
+ *
+ *   ICMP_POLL        IN: Used for polling the socket layer.  This is provided
+ *                        periodically from the drivers to support (1) timed
+ *                        operations, and (2) to check if the ICMP layer needs
+ *                        to send an ARP request.  This is a device oriented
+ *                        event, not associated with a socket.  This differs
+ *                        from ICMPv6_POLL only in that the appdata pointer
+ *                        is set differently
+ *                   OUT: Not used
+ *
+ *   ICMPv6_POLL      IN: Used for polling the socket layer.  This is provided
+ *                        periodically from the drivers to support (1) timed
+ *                        operations, and (2) to check if the ICMP layer needs
+ *                        to send an ARP request.  This is a device oriented
+ *                        event, not associated with a socket.  This differs
+ *                        from ICMP_POLL only in that the appdata pointer
+ *                        is set differently
+ *                   OUT: Not used
+ *
  *   ICMP_ECHOREPLY  IN: An ICMP Echo Reply has been received.  Used to support
- *   ICMPv6_ECHOREPLY    ICMP ping from the socket layer. (ICMP only)
+ *                        ICMP ping from the socket layer. (ICMPv4 only)
  *                  OUT: Cleared (only) by the socket layer logic to indicate
  *                       that the reply was processed, suppressing further
  *                       attempts to process the reply.
+ *
+ *   ICMPv6_ECHOREPLY IN: An ICMP Echo Reply has been received.  Used to support
+ *                        ICMP ping from the socket layer. (ICMPv6 only)
+ *                   OUT: Cleared (only) by the socket layer logic to indicate
+ *                        that the reply was processed, suppressing further
+ *                        attempts to process the reply.
+ *
+ *   NETDEV_DOWN:     IN: The network device has been taken down.
+ *                   OUT: Not used
  */
+
+/* Connection specific events */
 
 #define TCP_ACKDATA      (1 << 0)
 #define TCP_NEWDATA      (1 << 1)
 #define UDP_NEWDATA      TCP_NEWDATA
 #define PKT_NEWDATA      TCP_NEWDATA
-#define ICMP_NEWDATA     TCP_NEWDATA
-#define ICMPv6_NEWDATA   TCP_NEWDATA
 #define TCP_SNDACK       (1 << 2)
 #define TCP_REXMIT       (1 << 3)
-#define ARP_POLL         (1 << 4)
-#define TCP_POLL         ARP_POLL
-#define UDP_POLL         ARP_POLL
-#define PKT_POLL         ARP_POLL
-#define ICMP_POLL        ARP_POLL
-#define ICMPv6_POLL      ARP_POLL
+#define TCP_POLL         (1 << 4)
+#define UDP_POLL         TCP_POLL
+#define PKT_POLL         TCP_POLL
 #define TCP_BACKLOG      (1 << 5)
 #define TCP_CLOSE        (1 << 6)
 #define TCP_ABORT        (1 << 7)
 #define TCP_CONNECTED    (1 << 8)
 #define TCP_TIMEDOUT     (1 << 9)
-#define ICMP_ECHOREPLY   (1 << 10)
-#define ICMPv6_ECHOREPLY ICMP_ECHOREPLY
 
-#define TCP_CONN_EVENTS (TCP_CLOSE | TCP_ABORT | TCP_CONNECTED | TCP_TIMEDOUT)
+/* Device specific events */
+
+#define ICMP_NEWDATA     TCP_NEWDATA
+#define ICMPv6_NEWDATA   TCP_NEWDATA
+#define ARP_POLL         (1 << 10)
+#define ICMP_POLL        (1 << 11)
+#define ICMPv6_POLL      (1 << 12)
+#define ICMP_ECHOREPLY   (1 << 13)
+#define ICMPv6_ECHOREPLY (1 << 14)
+#define NETDEV_DOWN      (1 << 15)
+
+#define RTS_NOTIFY       (1 << 16)
+
+/* The set of events that and implications to the TCP connection state */
+
+#define TCP_CONN_EVENTS \
+  (TCP_CLOSE | TCP_ABORT | TCP_CONNECTED | TCP_TIMEDOUT | NETDEV_DOWN)
+
+#define TCP_DISCONN_EVENTS \
+  (TCP_CLOSE | TCP_ABORT | TCP_TIMEDOUT | NETDEV_DOWN)
 
 /* IPv4/IPv6 Helpers */
 
@@ -159,26 +220,30 @@
  * Public Type Definitions
  ****************************************************************************/
 
-/* Describes a device interface callback
+/* Describes a connection/device event callback interface
  *
- *   flink   - Supports a singly linked list
+ *   nxtconn - Supports a singly linked list that supports connection
+ *             specific event handlers.
+ *   nxtdev  - Supports a singly linked list that supports device specific
+ *             event handlers
  *   event   - Provides the address of the callback function entry point.
- *             pvconn is a pointer to one of struct tcp_conn_s or struct
- *             udp_conn_s.
+ *             pvconn is a pointer to a connection-specific datat structure
+ *             such as struct tcp_conn_s or struct udp_conn_s.
  *   priv    - Holds a reference to socket layer specific data that will
  *             provided
  *   flags   - Set by the socket layer to inform the lower layer which flags
- *             were and were not handled by the callback.
+ *             are and are not handled by the callback.
  */
 
 struct net_driver_s;       /* Forward reference */
 struct devif_callback_s
 {
-  FAR struct devif_callback_s *flink;
-  uint16_t (*event)(FAR struct net_driver_s *dev, FAR void *pvconn,
-                    FAR void *pvpriv, uint16_t flags);
+  FAR struct devif_callback_s *nxtconn;
+  FAR struct devif_callback_s *nxtdev;
+  uint32_t (*event)(FAR struct net_driver_s *dev, FAR void *pvconn,
+                    FAR void *pvpriv, uint32_t flags);
   FAR void *priv;
-  uint16_t flags;
+  uint32_t flags;
 };
 
 /****************************************************************************
@@ -192,12 +257,6 @@ extern uint16_t g_ipid;
 /* Reassembly timer (units: deci-seconds) */
 
 extern uint8_t g_reassembly_timer;
-#endif
-
-#if defined(CONFIG_NET_ICMP) && defined(CONFIG_NET_ICMP_PING)
-/* List of applications waiting for ICMP ECHO REPLY */
-
-extern struct devif_callback_s *g_icmp_echocallback;
 #endif
 
 /****************************************************************************
@@ -233,11 +292,9 @@ void devif_initialize(void);
  *
  * Description:
  *   Configure the pre-allocated callback structures into a free list.
- *   This is called internally as part of uIP initialization and should not
- *   be accessed from the application or socket layer.
  *
  * Assumptions:
- *   This function is called with interrupts disabled.
+ *   This function must be called with the network locked.
  *
  ****************************************************************************/
 
@@ -248,47 +305,116 @@ void devif_callback_init(void);
  *
  * Description:
  *   Allocate a callback container from the free list.
- *   This is called internally as part of uIP initialization and should not
- *   be accessed from the application or socket layer.
+ *
+ *   If dev is non-NULL, then this function verifies that the device
+ *   reference is still  valid and that the device is still UP status.  If
+ *   those conditions are not true, this function will fail to allocate the
+ *   callback.
  *
  * Assumptions:
- *   This function is called with interrupts disabled.
+ *   This function must be called with the network locked.
  *
  ****************************************************************************/
 
-FAR struct devif_callback_s *devif_callback_alloc(FAR struct devif_callback_s **list);
+FAR struct devif_callback_s *
+  devif_callback_alloc(FAR struct net_driver_s *dev,
+                       FAR struct devif_callback_s **list);
 
 /****************************************************************************
- * Function: devif_callback_free
+ * Function: devif_conn_callback_free
  *
  * Description:
- *   Return a callback container to the free list.
- *   This is called internally as part of uIP initialization and should not
- *   be accessed from the application or socket layer.
+ *   Return a connection/port callback container to the free list.
+ *
+ *   This function is just a front-end for devif_callback_free().  If the
+ *   dev argument is non-NULL, it will verify that the device reference is
+ *   still valid before attempting to free the callback structure.  A
+ *   non-NULL list pointer is assumed to be valid in any case.
+ *
+ *   The callback structure will be freed in any event.
  *
  * Assumptions:
- *   This function is called with interrupts disabled.
+ *   This function must be called with the network locked.
  *
  ****************************************************************************/
 
-void devif_callback_free(FAR struct devif_callback_s *cb,
+void devif_conn_callback_free(FAR struct net_driver_s *dev,
+                              FAR struct devif_callback_s *cb,
                          FAR struct devif_callback_s **list);
 
 /****************************************************************************
- * Function: devif_callback_execute
+ * Function: devif_dev_callback_free
  *
  * Description:
- *   Execute a list of callbacks.
- *   This is called internally as part of uIP initialization and should not
- *   be accessed from the application or socket layer.
+ *   Return a device callback container to the free list.
+ *
+ *   This function is just a front-end for devif_callback_free().  If the
+ *   de argument is non-NULL, it will verify that the device reference is
+ *   still valid before attempting to free the callback structure.  It
+ *   differs from devif_conn_callback_free in that connection/port-related
+ *   connections are also associated with the device and, hence, also will
+ *   not be valid if the device pointer is not valid.
+ *
+ *   The callback structure will be freed in any event.
  *
  * Assumptions:
- *   This function is called with interrupts disabled.
+ *   This function must be called with the network locked.
  *
  ****************************************************************************/
 
-uint16_t devif_callback_execute(FAR struct net_driver_s *dev, FAR void *pvconn,
-                                uint16_t flags, FAR struct devif_callback_s *list);
+void devif_dev_callback_free(FAR struct net_driver_s *dev,
+                             FAR struct devif_callback_s *cb);
+
+/****************************************************************************
+ * Function: devif_conn_event
+ *
+ * Description:
+ *   Execute a list of callbacks.
+ *
+ * Input parameters:
+ *   dev - The network device state structure associated with the network
+ *     device that initiated the callback event.
+ *   pvconn - Holds a reference to the TCP connection structure or the UDP
+ *     port structure.  May be NULL if the even is not related to a TCP
+ *     connection or UDP port.
+ *   flags - The bit set of events to be notified.
+ *   list - The list to traverse in performing the notifications
+ *
+ * Returned value:
+ *   The updated flags as modified by the callback functions.
+ *
+ * Assumptions:
+ *   This function must be called with the network locked.
+ *
+ ****************************************************************************/
+
+uint32_t devif_conn_event(FAR struct net_driver_s *dev, FAR void *pvconn,
+                                uint32_t flags, FAR struct devif_callback_s *list);
+
+/****************************************************************************
+ * Function: devif_dev_event
+ *
+ * Description:
+ *   Execute a list of callbacks using the device event chain.
+ *
+ * Input parameters:
+ *   dev - The network device state structure associated with the network
+ *     device that initiated the callback event.
+ *   pvconn - Holds a reference to the TCP connection structure or the UDP
+ *     port structure.  May be NULL if the even is not related to a TCP
+ *     connection or UDP port.
+ *   flags - The bit set of events to be notified.
+ *
+ * Returned value:
+ *   The updated flags as modified by the callback functions.
+ *
+ * Assumptions:
+ *   This function must be called with the network locked.
+ *
+ ****************************************************************************/
+
+uint32_t devif_dev_event(FAR struct net_driver_s *dev, void *pvconn,
+                         uint32_t flags);
 
 /****************************************************************************
  * Send data on the current connection.
@@ -298,10 +424,10 @@ uint16_t devif_callback_execute(FAR struct net_driver_s *dev, FAR void *pvconn,
  * processing can send data.
  *
  * The amount of data that actually is sent out after a call to this
- * function is determined by the maximum amount of data TCP allows. uIP
- * will automatically crop the data so that only the appropriate
- * amount of data is sent. The function tcp_mss() can be used to query
- * uIP for the amount of data that actually will be sent.
+ * function is determined by the maximum amount of data TCP allows. The
+ * network will automatically crop the data so that only the appropriate
+ * amount of data is sent. The mss field of the TCP connection structure
+ * can be used to determine the amount of data that actually will be sent.
  *
  * Note:  This function does not guarantee that the sent data will
  * arrive at the destination.  If the data is lost in the network, the
@@ -316,11 +442,42 @@ uint16_t devif_callback_execute(FAR struct net_driver_s *dev, FAR void *pvconn,
 
 void devif_send(FAR struct net_driver_s *dev, FAR const void *buf, int len);
 
+/****************************************************************************
+ * Name: devif_iob_send
+ *
+ * Description:
+ *   Called from socket logic in response to a xmit or poll request from the
+ *   the network interface driver.
+ *
+ *   This is identical to calling devif_send() except that the data is
+ *   in an I/O buffer chain, rather than a flat buffer.
+ *
+ * Assumptions:
+ *   This function must be called with the network locked.
+ *
+ ****************************************************************************/
+
 #ifdef CONFIG_NET_IOB
 struct iob_s;
 void devif_iob_send(FAR struct net_driver_s *dev, FAR struct iob_s *buf,
                     unsigned int len, unsigned int offset);
 #endif
+
+/****************************************************************************
+ * Name: devif_pkt_send
+ *
+ * Description:
+ *   Called from socket logic in order to send a raw packet in response to
+ *   an xmit or poll request from the the network interface driver.
+ *
+ *   This is almost identical to calling devif_send() except that the data to
+ *   be sent is copied into dev->d_buf (vs. dev->d_appdata), since there is
+ *   no header on the data.
+ *
+ * Assumptions:
+ *   This function must be called with the network locked.
+ *
+ ****************************************************************************/
 
 #ifdef CONFIG_NET_PKT
 void devif_pkt_send(FAR struct net_driver_s *dev, FAR const void *buf,

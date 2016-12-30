@@ -53,29 +53,35 @@
 #include <nuttx/net/netdev.h>
 #include <nuttx/net/arp.h>
 
-#include "netdev/netdev.h"
+#include "utils/utils.h"
 #include "igmp/igmp.h"
+#include "netdev/netdev.h"
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
+#define NETDEV_ETH_FORMAT   "eth%d"
+#define NETDEV_LO_FORMAT    "lo"
+#define NETDEV_WPAN_FORMAT  "wpan%d"
 #define NETDEV_SLIP_FORMAT      "sl%d"
-#define NETDEV_ETH_FORMAT       "eth%d"
+#define NETDEV_TUN_FORMAT   "tun%d"
 
 #if defined(CONFIG_NET_SLIP)
 #  define NETDEV_DEFAULT_FORMAT NETDEV_SLIP_FORMAT
-#else /* if defined(CONFIG_NET_ETHERNET) */
+#elif defined(CONFIG_NET_ETHERNET)
 #  define NETDEV_DEFAULT_FORMAT NETDEV_ETH_FORMAT
+#elif defined(CONFIG_NET_6LOWPAN)
+#  define NETDEV_DEFAULT_FORMAT NETDEV_WPAN_FORMAT
+#else /* if defined(CONFIG_NET_LOOPBACK) */
+#  define NETDEV_DEFAULT_FORMAT NETDEV_LO_FORMAT
 #endif
-
-/****************************************************************************
- * Private Types
- ****************************************************************************/
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
+
+/* Then next available device number */
 
 static int g_next_devnum = 0;
 
@@ -90,6 +96,55 @@ struct net_driver_s *g_netdevices = NULL;
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Function: find_devnum
+ *
+ * Description:
+ *   Given a device name format string, find the next device number for the
+ *   class of device represented by that format string.
+ *
+ * Parameters:
+ *   devfmt - The device format string
+ *
+ * Returned Value:
+ *   The next device number for that device class
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_MULTILINK
+static int find_devnum(FAR const char *devfmt)
+{
+  FAR struct net_driver_s *curr;
+  size_t fmt_size;
+  int result = 0;
+
+  fmt_size = strlen(devfmt);
+
+  /* Assumed that devfmt is xxx%d */
+
+  DEBUGASSERT(fmt_size > 2);
+  fmt_size -= 2;
+
+  /* Search the list of currently registered network devices */
+
+  for (curr = g_netdevices; curr; curr = curr->flink )
+    {
+      /* Does this device name match the format we were given? */
+
+      if (strncmp(curr->d_ifname, devfmt, fmt_size) == 0)
+        {
+          /* Yes.. increment the candidate device number */
+
+          result++;
+        }
+    }
+
+  /* Return this next device number for this format */
+
+  return result;
+}
+#endif
 
 /****************************************************************************
  * Public Functions
@@ -118,6 +173,10 @@ struct net_driver_s *g_netdevices = NULL;
 int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
 {
   FAR const char *devfmt;
+#ifdef CONFIG_NET_USER_DEVFMT
+  FAR const char devfmt_str[IFNAMSIZ];
+#endif
+  net_lock_t save;
   int devnum;
 
   if (dev)
@@ -131,6 +190,18 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
 
       switch (lltype)
         {
+#ifdef CONFIG_NET_LOOPBACK
+          case NET_LL_LOOPBACK:   /* Local loopback */
+            dev->d_llhdrlen = 0;
+            dev->d_mtu      = NET_LO_MTU;
+            dev->d_flags   |= IFF_LOOPBACK;
+#ifdef CONFIG_NET_TCP
+            dev->d_recvwndo = NET_LO_TCP_RECVWNDO;
+#endif
+            devfmt          = NETDEV_LO_FORMAT;
+            break;
+#endif
+
 #ifdef CONFIG_NET_ETHERNET
           case NET_LL_ETHERNET:  /* Ethernet */
             dev->d_llhdrlen = ETH_HDRLEN;
@@ -139,6 +210,17 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
             dev->d_recvwndo = CONFIG_NET_ETH_TCP_RECVWNDO;
 #endif
             devfmt          = NETDEV_ETH_FORMAT;
+            break;
+#endif
+
+#ifdef CONFIG_NET_6LOWPAN
+          case NET_LL_6LOWPAN:    /* IEEE 802.15.4 */
+            dev->d_llhdrlen = 0;  /* REVISIT */
+            dev->d_mtu      = CONFIG_NET_6LOWPAN_MTU;
+#ifdef CONFIG_NET_TCP
+            dev->d_recvwndo = CONFIG_NET_6LOWPAN_TCP_RECVWNDO;
+#endif
+            devfmt          = NETDEV_WPAN_FORMAT;
             break;
 #endif
 
@@ -153,14 +235,14 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
             break;
 #endif
 
-#if 0                            /* REVISIT: Not yet supported */
-          case NET_LL_PPP:       /* Point-to-Point Protocol (PPP) */
+#ifdef CONFIG_NET_TUN
+          case NET_LL_TUN:        /* Virtual Network Device (TUN) */
             dev->d_llhdrlen = 0;
-            dev->d_mtu      = CONFIG_NET_PPP_MTU;
+            dev->d_mtu      = CONFIG_NET_TUN_MTU;
 #ifdef CONFIG_NET_TCP
-            dev->d_recvwndo = CONFIG_NET_PPP_TCP_RECVWNDO;
+            dev->d_recvwndo = CONFIG_NET_TUN_TCP_RECVWNDO;
 #endif
-            devfmt          = NETDEV_PPP_FORMAT;
+            devfmt          = NETDEV_TUN_FORMAT;
             break;
 #endif
 
@@ -179,11 +261,56 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
      devfmt = NETDEV_DEFAULT_FORMAT;
 #endif
 
-      /* Assign a device name to the interface */
+      /* There are no clients of the device yet */
 
-      netdev_semtake();
-      devnum = g_next_devnum++;
+      dev->d_conncb = NULL;
+      dev->d_devcb = NULL;
+
+      /* Initialie the time of the last timer poll */
+
+      dev->d_polltime = clock_systimer();
+
+      /* Get the next available device number and assign a device name to
+       * the interface
+       */
+
+      save = net_lock();
+
+#ifdef CONFIG_NET_MULTILINK
+#  ifdef CONFIG_NET_LOOPBACK
+      /* The local loopback device is a special case:  There can be only one
+       * local loopback device so it is unnumbered.
+       */
+
+      if (lltype == NET_LL_LOOPBACK)
+        {
+          devnum = 0;
+        }
+      else
+#  endif
+        {
+          devnum = find_devnum(devfmt);
+        }
+#else
+      /* There is only a single link type.  Finding the next network device
+       * number is simple.
+       */
+
+      devnum = g_next_devnum;
+#endif
+
+#ifdef CONFIG_NET_USER_DEVFMT
+      if (*dev->d_ifname)
+        {
+          strncpy(devfmt_str, dev->d_ifname, IFNAMSIZ);
+          devfmt = devfmt_str;
+        }
+#endif
+
+      if ((++g_next_devnum) < 0)
+          g_next_devnum = 1;
       snprintf(dev->d_ifname, IFNAMSIZ, devfmt, devnum );
+      dev->d_ifindex = g_next_devnum; /* index 0 is invalid */
 
       /* Add the device to the list of known network devices */
 
@@ -195,7 +322,7 @@ int netdev_register(FAR struct net_driver_s *dev, enum net_lltype_e lltype)
 #ifdef CONFIG_NET_IGMP
       igmp_devinit(dev);
 #endif
-      netdev_semgive();
+      net_unlock(save);
 
 #ifdef CONFIG_NET_ETHERNET
       nlldbg("Registered MAC: %02x:%02x:%02x:%02x:%02x:%02x as dev: %s\n",

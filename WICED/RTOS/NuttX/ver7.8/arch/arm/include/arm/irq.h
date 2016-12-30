@@ -205,6 +205,9 @@ static inline void irqrestore(irqstate_t flags)
 }
 #endif /* __ASSEMBLY__ */
 
+#define up_irq_save() irqsave()
+#define up_irq_restore(f) irqrestore(f)
+
 /****************************************************************************
  * Public Variables
  ****************************************************************************/

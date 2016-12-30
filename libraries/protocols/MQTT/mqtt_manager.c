@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -65,17 +88,6 @@ static wiced_result_t mqtt_manager_tick( void* arg )
     mqtt_connection_t *conn = (mqtt_connection_t *) arg;
     if ( mqtt_manager( MQTT_EVENT_TICK, NULL, conn ) != WICED_SUCCESS )
     {
-
-        /* Publish is an async method (we don't get an OK), so we simulate the OK after sending it */
-        if ( conn->callbacks != NULL )
-        {
-
-            wiced_mqtt_event_info_t event;
-            event.type = WICED_MQTT_EVENT_TYPE_DISCONNECTED;
-            event.data.err_code = WICED_MQTT_CONN_ERR_CODE_INVALID;
-            conn->callbacks( (void*) conn, &event );
-        }
-
         return WICED_ERROR;
     }
     return WICED_SUCCESS;
@@ -88,7 +100,6 @@ static wiced_result_t mqtt_manager_heartbeat_init( uint16_t keep_alive, void *p_
     heartbeat->send_counter = keep_alive;
     heartbeat->recv_counter = (uint32_t) 2 * keep_alive;
     return wiced_rtos_register_timed_event( &heartbeat->timer, WICED_NETWORKING_WORKER_THREAD, mqtt_manager_tick, heartbeat->step_value * 1000, p_user );
-
 }
 
 inline static void mqtt_manager_heartbeat_send_reset( mqtt_heartbeat_t *heartbeat )
@@ -135,259 +146,267 @@ static void mqtt_manager_heartbeat_deinit( mqtt_heartbeat_t *heartbeat )
 wiced_result_t mqtt_manager( mqtt_event_t event, void *args, mqtt_connection_t *conn )
 {
     wiced_result_t result = WICED_SUCCESS;
-
-    switch ( event )
-    {
-        case MQTT_EVENT_SEND_CONNECT:
+    if ( conn->network_status == MQTT_NETWORK_CONNECTED )
+     {
+        switch ( event )
         {
-            mqtt_connect_arg_t *connect_arg = (mqtt_connect_arg_t *) args;
-            if ( connect_arg->keep_alive )
+            case MQTT_EVENT_SEND_CONNECT:
             {
-                mqtt_manager_heartbeat_init( connect_arg->keep_alive, conn, &conn->heartbeat );
+                mqtt_connect_arg_t *connect_arg = (mqtt_connect_arg_t *) args;
+                if ( connect_arg->keep_alive )
+                {
+                    mqtt_manager_heartbeat_init( connect_arg->keep_alive, conn, &conn->heartbeat );
+                }
+                mqtt_backend_put_connect( args, conn );
             }
-            mqtt_backend_put_connect( args, conn );
-        }
-            break;
+                break;
 
-        case MQTT_EVENT_SEND_DISCONNECT:
-        {
-            mqtt_manager_heartbeat_deinit( &conn->heartbeat );
-            if ( ( result = mqtt_backend_put_disconnect( conn ) ) == WICED_SUCCESS )
+            case MQTT_EVENT_SEND_DISCONNECT:
             {
+                mqtt_backend_put_disconnect( conn );
+                mqtt_manager_heartbeat_deinit( &conn->heartbeat );
                 mqtt_backend_connection_close( conn );
             }
-        }
-            break;
+                break;
 
-        case MQTT_EVENT_SEND_SUBSCRIBE:
-        {
-            mqtt_backend_put_subscribe( args, conn );
-            mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-            if ( mqtt_session_add_item( MQTT_PACKET_TYPE_SUBSCRIBE, args, conn->session ) != WICED_SUCCESS )
+            case MQTT_EVENT_SEND_SUBSCRIBE:
             {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] Adding subscribe to session queue fail.\n ") );
-            }
-        }
-            break;
-
-        case MQTT_EVENT_SEND_UNSUBSCRIBE:
-        {
-            mqtt_backend_put_unsubscribe( args, conn );
-            mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-            if ( mqtt_session_add_item( MQTT_PACKET_TYPE_UNSUBSCRIBE, args, conn->session ) != WICED_SUCCESS )
-            {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] Adding unsubscribe to session queue fail.\n ") );
-            }
-        }
-            break;
-
-        case MQTT_EVENT_SEND_PUBLISH:
-        {
-            mqtt_publish_arg_t *publish_args = (mqtt_publish_arg_t *) args;
-            if ( mqtt_session_add_item( MQTT_PACKET_TYPE_PUBLISH, args, conn->session ) != WICED_SUCCESS )
-            {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] Adding publish to session queue fail.\n ") );
-            }
-            result = mqtt_backend_put_publish( args, conn );
-            if ( ( publish_args->qos != MQTT_QOS_DELIVER_AT_MOST_ONCE ) )
-            {
+                mqtt_backend_put_subscribe( args, conn );
                 mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-            }
-
-            if ( publish_args->qos == MQTT_QOS_DELIVER_AT_MOST_ONCE )
-            {
-                if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBLISH, publish_args->packet_id, conn->session ) != WICED_SUCCESS )
+                if ( mqtt_session_add_item( MQTT_PACKET_TYPE_SUBSCRIBE, args, conn->session ) != WICED_SUCCESS )
                 {
                     /* TODO : error handling */
-                    WPRINT_LIB_ERROR(( "[MQTT] publish with Qos level 0 %d not in session queue.\n ", publish_args->packet_id ));
-                }
-                if ( ( result == WICED_SUCCESS ) & ( conn->callbacks != NULL ) )
-                {
-                    wiced_mqtt_event_info_t callback_event;
-                    callback_event.type = WICED_MQTT_EVENT_TYPE_PUBLISHED;
-                    conn->callbacks( (void*) conn, &callback_event );
+                    WPRINT_LIB_ERROR( ("[MQTT] Adding subscribe to session queue fail.\n ") );
                 }
             }
-        }
-            break;
+                break;
 
-        case MQTT_EVENT_RECV_PUBLISH:
-        {
-            mqtt_publish_arg_t *publish_args = (mqtt_publish_arg_t *) args;
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            if ( publish_args->qos == MQTT_QOS_DELIVER_AT_LEAST_ONCE )
+            case MQTT_EVENT_SEND_UNSUBSCRIBE:
             {
-                mqtt_puback_arg_t puback_args;
-                puback_args.packet_id = publish_args->packet_id;
-                mqtt_backend_put_puback( &puback_args, conn );
+                mqtt_backend_put_unsubscribe( args, conn );
                 mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-            }
-            else if ( publish_args->qos == MQTT_QOS_DELIVER_EXACTLY_ONCE )
-            {
-                mqtt_pubrec_arg_t pubrec_args;
-                pubrec_args.packet_id = publish_args->packet_id;
-                mqtt_backend_put_pubrec( &pubrec_args, conn );
-                mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-                if ( mqtt_session_item_exist( MQTT_PACKET_TYPE_PUBREC, publish_args->packet_id, conn->session ) != WICED_SUCCESS )
+                if ( mqtt_session_add_item( MQTT_PACKET_TYPE_UNSUBSCRIBE, args, conn->session ) != WICED_SUCCESS )
                 {
-                    /* new publish packet */
-                    if ( mqtt_session_add_item( MQTT_PACKET_TYPE_PUBREC, &pubrec_args, conn->session ) != WICED_SUCCESS )
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] Adding unsubscribe to session queue fail.\n ") );
+                }
+            }
+                break;
+
+            case MQTT_EVENT_SEND_PUBLISH:
+            {
+                mqtt_publish_arg_t *publish_args = (mqtt_publish_arg_t *) args;
+                if ( mqtt_session_add_item( MQTT_PACKET_TYPE_PUBLISH, args, conn->session ) != WICED_SUCCESS )
+                {
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] Adding publish to session queue fail.\n ") );
+                }
+                result = mqtt_backend_put_publish( args, conn );
+                if ( ( publish_args->qos != MQTT_QOS_DELIVER_AT_MOST_ONCE ) )
+                {
+                    mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
+                }
+
+                if ( publish_args->qos == MQTT_QOS_DELIVER_AT_MOST_ONCE )
+                {
+                    if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBLISH, publish_args->packet_id, conn->session ) != WICED_SUCCESS )
                     {
                         /* TODO : error handling */
-                        WPRINT_LIB_ERROR( ("[MQTT] Adding pubrec to session queue fail.\n ") );
+                        WPRINT_LIB_ERROR(( "[MQTT] publish with Qos level 0 %d not in session queue.\n ", publish_args->packet_id ));
                     }
+                    if ( ( result == WICED_SUCCESS ) & ( conn->callbacks != NULL ) )
+                    {
+                        wiced_mqtt_event_info_t callback_event;
+                        callback_event.type = WICED_MQTT_EVENT_TYPE_PUBLISHED;
+                        conn->callbacks( (void*) conn, &callback_event );
+                    }
+                }
+            }
+                break;
+
+            case MQTT_EVENT_RECV_PUBLISH:
+            {
+                mqtt_publish_arg_t *publish_args = (mqtt_publish_arg_t *) args;
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                if ( publish_args->qos == MQTT_QOS_DELIVER_AT_LEAST_ONCE )
+                {
+                    mqtt_puback_arg_t puback_args;
+                    puback_args.packet_id = publish_args->packet_id;
+                    mqtt_backend_put_puback( &puback_args, conn );
+                    mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
+                }
+                else if ( publish_args->qos == MQTT_QOS_DELIVER_EXACTLY_ONCE )
+                {
+                    mqtt_pubrec_arg_t pubrec_args;
+                    pubrec_args.packet_id = publish_args->packet_id;
+                    mqtt_backend_put_pubrec( &pubrec_args, conn );
+                    mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
+                    if ( mqtt_session_item_exist( MQTT_PACKET_TYPE_PUBREC, publish_args->packet_id, conn->session ) != WICED_SUCCESS )
+                    {
+                        /* new publish packet */
+                        if ( mqtt_session_add_item( MQTT_PACKET_TYPE_PUBREC, &pubrec_args, conn->session ) != WICED_SUCCESS )
+                        {
+                            /* TODO : error handling */
+                            WPRINT_LIB_ERROR( ("[MQTT] Adding pubrec to session queue fail.\n ") );
+                        }
+                    }
+                    else
+                    {
+                        /* This item is already received before shouldn't be passed to user */
+                        publish_args->data = NULL;
+                    }
+                }
+            }
+                break;
+
+            case MQTT_EVENT_RECV_SUBACK:
+            {
+                wiced_mqtt_suback_arg_t *suback_args = (wiced_mqtt_suback_arg_t *) args;
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_SUBSCRIBE, suback_args->packet_id, conn->session ) != WICED_SUCCESS )
+                {
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] suback %d not in session queue.\n ", suback_args->packet_id ) );
+                }
+            }
+                break;
+
+            case MQTT_EVENT_RECV_UNSUBACK:
+            {
+                mqtt_unsuback_arg_t *unsuback_args = (mqtt_unsuback_arg_t *) args;
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_UNSUBSCRIBE, unsuback_args->packet_id, conn->session ) != WICED_SUCCESS )
+                {
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] unsuback %d not in session queue.\n ", unsuback_args->packet_id) );
+                }
+            }
+                break;
+
+            case MQTT_EVENT_RECV_PUBACK:
+            {
+                mqtt_puback_arg_t *puback_args = (mqtt_puback_arg_t *) args;
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBLISH, puback_args->packet_id, conn->session ) != WICED_SUCCESS )
+                {
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] puback %d not in session queue.\n ", puback_args->packet_id) );
+                }
+            }
+                break;
+
+            case MQTT_EVENT_RECV_PUBREC:
+            {
+                mqtt_pubrec_arg_t *pubrec_args = (mqtt_pubrec_arg_t *) args;
+                mqtt_pubrel_arg_t pubrel_args;
+                pubrel_args.packet_id = pubrec_args->packet_id;
+
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBLISH, pubrec_args->packet_id, conn->session ) != WICED_SUCCESS )
+                {
+                    WPRINT_LIB_ERROR( ("[MQTT] publish %d not in session queue.\n ", pubrec_args->packet_id) );
+                }
+
+                mqtt_backend_put_pubrel( &pubrel_args, conn );
+                mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
+                if ( mqtt_session_item_exist( MQTT_PACKET_TYPE_PUBREL, pubrel_args.packet_id, conn->session ) != WICED_SUCCESS )
+                {
+                    if ( mqtt_session_add_item( MQTT_PACKET_TYPE_PUBREL, &pubrel_args, conn->session ) != WICED_SUCCESS )
+                    {
+                        /* TODO : error handling */
+                        WPRINT_LIB_ERROR( ("[MQTT] Adding pubrel to session queue fail.\n ") );
+                    }
+                }
+            }
+                break;
+
+            case MQTT_EVENT_RECV_PUBREL:
+            {
+                mqtt_pubrel_arg_t *pubrel_args = (mqtt_pubrel_arg_t *) args;
+                mqtt_pubcomp_arg_t pubcomp_args;
+                pubcomp_args.packet_id = pubrel_args->packet_id;
+
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBREC, pubrel_args->packet_id, conn->session ) != WICED_SUCCESS )
+                {
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] pubrec %d not in session queue.\n ", pubrel_args->packet_id) );
+                }
+                mqtt_backend_put_pubcomp( &pubcomp_args, conn );
+                mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
+            }
+                break;
+
+            case MQTT_EVENT_RECV_PUBCOMP:
+            {
+                mqtt_pubcomp_arg_t *pubcomp_args = (mqtt_pubcomp_arg_t *) args;
+
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBREL, pubcomp_args->packet_id, conn->session ) != WICED_SUCCESS )
+                {
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] pubrel %d not in session queue.\n ", pubcomp_args->packet_id) );
+                }
+            }
+                break;
+
+            case MQTT_EVENT_RECV_PINGRES:
+            case MQTT_EVENT_RECV_CONNACK:
+            {
+                mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
+                /* Resend any thing in the session */
+                if ( mqtt_session_iterate_through_items( mqtt_manager_resend_packet, conn, conn->session ) != WICED_SUCCESS )
+                {
+                    /* TODO : error handling */
+                    WPRINT_LIB_ERROR( ("[MQTT] Error resending session messages.\n " ) );
+                }
+            }
+                break;
+
+            case MQTT_EVENT_TICK:
+            {
+                if ( mqtt_manager_heartbeat_recv_step( &conn->heartbeat ) != WICED_SUCCESS )
+                {
+                    /* Reset counter timed out, since we didn't receive any mqtt packet from broker */
+                    mqtt_socket_t *mqtt_socket = (mqtt_socket_t *) &conn->socket;
+                    mqtt_event_message_t current_event;
+
+                    current_event.event_type = MQTT_DISCONNECT_EVENT;
+                    return wiced_rtos_push_to_queue( &mqtt_socket->queue, &current_event, WICED_NO_WAIT );
                 }
                 else
                 {
-                    /* This item is already received before shouldn't be passed to user */
-                    publish_args->data = NULL;
+                    if ( mqtt_manager_heartbeat_send_step( &conn->heartbeat ) != WICED_SUCCESS )
+                    {
+                        mqtt_backend_put_pingreq( conn );
+                        mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
+                    }
                 }
             }
-        }
-            break;
+                break;
 
-        case MQTT_EVENT_RECV_SUBACK:
-        {
-            wiced_mqtt_suback_arg_t *suback_args = (wiced_mqtt_suback_arg_t *) args;
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_SUBSCRIBE, suback_args->packet_id, conn->session ) != WICED_SUCCESS )
+            case MQTT_EVENT_CONNECTION_CLOSE:
             {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] suback %d not in session queue.\n ", suback_args->packet_id ) );
+                mqtt_connection_deinit( conn );
+                mqtt_manager_heartbeat_deinit( &conn->heartbeat );
+
             }
+                break;
+
+            case MQTT_EVENT_SEND_PINGREQ:
+            case MQTT_EVENT_SEND_PUBREL:
+            case MQTT_EVENT_SEND_PUBREC:
+            case MQTT_EVENT_SEND_PUBCOMP:
+            case MQTT_EVENT_SEND_PUBACK:
+            default:
+                break;
         }
-            break;
-
-        case MQTT_EVENT_RECV_UNSUBACK:
-        {
-            mqtt_unsuback_arg_t *unsuback_args = (mqtt_unsuback_arg_t *) args;
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_UNSUBSCRIBE, unsuback_args->packet_id, conn->session ) != WICED_SUCCESS )
-            {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] unsuback %d not in session queue.\n ", unsuback_args->packet_id) );
-            }
-        }
-            break;
-
-        case MQTT_EVENT_RECV_PUBACK:
-        {
-            mqtt_puback_arg_t *puback_args = (mqtt_puback_arg_t *) args;
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBLISH, puback_args->packet_id, conn->session ) != WICED_SUCCESS )
-            {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] puback %d not in session queue.\n ", puback_args->packet_id) );
-            }
-        }
-            break;
-
-        case MQTT_EVENT_RECV_PUBREC:
-        {
-            mqtt_pubrec_arg_t *pubrec_args = (mqtt_pubrec_arg_t *) args;
-            mqtt_pubrel_arg_t pubrel_args;
-            pubrel_args.packet_id = pubrec_args->packet_id;
-
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBLISH, pubrec_args->packet_id, conn->session ) != WICED_SUCCESS )
-            {
-                WPRINT_LIB_ERROR( ("[MQTT] publish %d not in session queue.\n ", pubrec_args->packet_id) );
-            }
-
-            mqtt_backend_put_pubrel( &pubrel_args, conn );
-            mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-            if ( mqtt_session_item_exist( MQTT_PACKET_TYPE_PUBREL, pubrel_args.packet_id, conn->session ) != WICED_SUCCESS )
-            {
-                if ( mqtt_session_add_item( MQTT_PACKET_TYPE_PUBREL, &pubrel_args, conn->session ) != WICED_SUCCESS )
-                {
-                    /* TODO : error handling */
-                    WPRINT_LIB_ERROR( ("[MQTT] Adding pubrel to session queue fail.\n ") );
-                }
-            }
-        }
-            break;
-
-        case MQTT_EVENT_RECV_PUBREL:
-        {
-            mqtt_pubrel_arg_t *pubrel_args = (mqtt_pubrel_arg_t *) args;
-            mqtt_pubcomp_arg_t pubcomp_args;
-            pubcomp_args.packet_id = pubrel_args->packet_id;
-
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBREC, pubrel_args->packet_id, conn->session ) != WICED_SUCCESS )
-            {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] pubrec %d not in session queue.\n ", pubrel_args->packet_id) );
-            }
-            mqtt_backend_put_pubcomp( &pubcomp_args, conn );
-            mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-        }
-            break;
-
-        case MQTT_EVENT_RECV_PUBCOMP:
-        {
-            mqtt_pubcomp_arg_t *pubcomp_args = (mqtt_pubcomp_arg_t *) args;
-
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            if ( mqtt_session_remove_item( MQTT_PACKET_TYPE_PUBREL, pubcomp_args->packet_id, conn->session ) != WICED_SUCCESS )
-            {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] pubrel %d not in session queue.\n ", pubcomp_args->packet_id) );
-            }
-        }
-            break;
-
-        case MQTT_EVENT_RECV_PINGRES:
-        case MQTT_EVENT_RECV_CONNACK:
-        {
-            mqtt_manager_heartbeat_recv_reset( &conn->heartbeat );
-            /* Resend any thing in the session */
-            if ( mqtt_session_iterate_through_items( mqtt_manager_resend_packet, conn, conn->session ) != WICED_SUCCESS )
-            {
-                /* TODO : error handling */
-                WPRINT_LIB_ERROR( ("[MQTT] Error resending session messages.\n " ) );
-            }
-        }
-            break;
-
-        case MQTT_EVENT_TICK:
-        {
-            if ( mqtt_manager_heartbeat_recv_step( &conn->heartbeat ) != WICED_SUCCESS )
-            {
-                /* Reset counter timed out and we didn't receive any thing from broker */
-                mqtt_network_disconnect( &conn->socket );
-                result = WICED_ERROR;
-            }
-            else
-            {
-                if ( mqtt_manager_heartbeat_send_step( &conn->heartbeat ) != WICED_SUCCESS )
-                {
-                    mqtt_backend_put_pingreq( conn );
-                    mqtt_manager_heartbeat_send_reset( &conn->heartbeat );
-                }
-            }
-        }
-            break;
-
-        case MQTT_EVENT_CONNECTION_CLOSE:
-        {
-            /* TODO : add implementations here, or add fall-through to default */
-            mqtt_connection_deinit(conn);
-        }
-            break;
-
-        case MQTT_EVENT_SEND_PINGREQ:
-        case MQTT_EVENT_SEND_PUBREL:
-        case MQTT_EVENT_SEND_PUBREC:
-        case MQTT_EVENT_SEND_PUBCOMP:
-        case MQTT_EVENT_SEND_PUBACK:
-        default:
-            break;
     }
-    wiced_rtos_set_semaphore( &conn->semaphore );
+    else
+    {
+        WPRINT_LIB_ERROR( ("[MQTT LIB] Not connected\r\n ") );
+        return WICED_ERROR;
+    }
     return result;
 }
 

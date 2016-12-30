@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -55,93 +78,27 @@
 #define WWD_BUS_SDIO_AFTER_RESET_DELAY    (1)
 #endif
 
+#ifndef WWD_THREAD_POLL_TIMEOUT
+#define WWD_THREAD_POLL_TIMEOUT      (NEVER_TIMEOUT)
+#endif /* WWD_THREAD_POLL_TIMEOUT */
+
+#ifndef WWD_THREAD_POKE_TIMEOUT
+#define WWD_THREAD_POKE_TIMEOUT      (100)
+#endif /* WWD_THREAD_POKE_TIMEOUT */
+
 /******************************************************
  *             Structures
  ******************************************************/
-
-#pragma pack(1)
-typedef struct
-{
-    unsigned char stuff_bits;
-    unsigned int  ocr :24;
-} sdio_cmd5_argument_t;
-
-typedef struct
-{
-    unsigned int  _unique2         : 9; /* 0-8   */
-    unsigned int  register_address :17; /* 9-25  */
-    unsigned int  _unique          : 2; /* 26-27 */
-    unsigned int  function_number  : 3; /* 28-30 */
-    unsigned int  rw_flag          : 1; /* 31    */
-} sdio_cmd5x_argument_t;
-
-typedef struct
-{
-    uint8_t       write_data;           /* 0 - 7 */
-    unsigned int  _stuff2          : 1; /* 8     */
-    unsigned int  register_address :17; /* 9-25  */
-    unsigned int  _stuff           : 1; /* 26    */
-    unsigned int  raw_flag         : 1; /* 27    */
-    unsigned int  function_number  : 3; /* 28-30 */
-    unsigned int  rw_flag          : 1; /* 31    */
-} wwd_bus_sdio_cmd52_argument_t;
-
-typedef struct
-{
-    unsigned int  count            : 9; /* 0-8   */
-    unsigned int  register_address :17; /* 9-25  */
-    unsigned int  op_code          : 1; /* 26    */
-    unsigned int  block_mode       : 1; /* 27    */
-    unsigned int  function_number  : 3; /* 28-30 */
-    unsigned int  rw_flag          : 1; /* 31    */
-} wwd_bus_sdio_cmd53_argument_t;
-
-typedef union
-{
-    uint32_t              value;
-    sdio_cmd5_argument_t  cmd5;
-    sdio_cmd5x_argument_t cmd5x;
-    wwd_bus_sdio_cmd52_argument_t cmd52;
-    wwd_bus_sdio_cmd53_argument_t cmd53;
-} sdio_cmd_argument_t;
-
-typedef struct
-{
-    unsigned int  ocr              :24; /* 0-23  */
-    unsigned int  stuff_bits       : 3; /* 24-26 */
-    unsigned int  memory_present   : 1; /* 27    */
-    unsigned int  function_count   : 3; /* 28-30 */
-    unsigned int  c                : 1; /* 31    */
-} sdio_response4_t;
-
-typedef struct
-{
-    uint8_t       data;                /* 0-7   */
-    uint8_t       response_flags;       /* 8-15  */
-    uint16_t      stuff;               /* 16-31 */
-} sdio_response5_t;
-
-typedef struct
-{
-    uint16_t      card_status;          /* 0-15  */
-    uint16_t      rca;                 /* 16-31 */
-} sdio_response6_t;
-
-typedef union
-{
-    uint32_t                    value;
-    sdio_response4_t            r4;
-    sdio_response5_t            r5;
-    sdio_response6_t            r6;
-} sdio_response_t;
-
-#pragma pack()
 
 /******************************************************
  *             Variables
  ******************************************************/
 
 static wiced_bool_t wwd_bus_flow_controlled = WICED_FALSE;
+
+#ifdef WWD_ENABLE_STATS
+wwd_bus_stats_t wwd_bus_stats;
+#endif /* WWD_ENABLE_STATS */
 
 /******************************************************
  *             Static Function Declarations
@@ -209,12 +166,57 @@ static void add_log_entry( wwd_bus_transfer_direction_t dir, wwd_bus_function_t 
  *             Global Function definitions
  ******************************************************/
 
+void wwd_wait_for_wlan_event( host_semaphore_type_t* transceive_semaphore )
+{
+    wwd_result_t result = WWD_SUCCESS;
+    uint32_t timeout_ms = 1;
+    uint32_t delayed_release_timeout_ms;
+
+    REFERENCE_DEBUG_ONLY_VARIABLE( result );
+
+    delayed_release_timeout_ms = wwd_bus_handle_delayed_release( );
+    if ( delayed_release_timeout_ms != 0 )
+    {
+        timeout_ms = delayed_release_timeout_ms;
+    }
+    else
+    {
+        result = wwd_allow_wlan_bus_to_sleep( );
+        wiced_assert( "Error setting wlan sleep", ( result == WWD_SUCCESS ) || ( result == WWD_PENDING ) );
+
+        if ( result == WWD_SUCCESS )
+        {
+            timeout_ms = NEVER_TIMEOUT;
+        }
+    }
+
+    /* Check if we have run out of bus credits */
+    if ( wwd_sdpcm_get_available_credits( ) == 0 )
+    {
+        /* Keep poking the WLAN until it gives us more credits */
+        result = wwd_bus_poke_wlan( );
+        wiced_assert( "Poking failed!", result == WWD_SUCCESS );
+
+        result = host_rtos_get_semaphore( transceive_semaphore, (uint32_t) MIN( timeout_ms, WWD_THREAD_POKE_TIMEOUT ), WICED_FALSE );
+    }
+    else
+    {
+        result = host_rtos_get_semaphore( transceive_semaphore, (uint32_t) MIN( timeout_ms, WWD_THREAD_POLL_TIMEOUT ), WICED_FALSE );
+    }
+    wiced_assert("Could not get wwd sleep semaphore\n", ( result == WWD_SUCCESS)||(result == WWD_TIMEOUT ) );
+
+}
+
 /* Device data transfer functions */
 wwd_result_t wwd_bus_send_buffer( wiced_buffer_t buffer )
 {
     wwd_result_t retval;
     retval = wwd_bus_transfer_bytes( BUS_WRITE, WLAN_FUNCTION, 0, (uint16_t) ( host_buffer_get_current_piece_size( buffer ) - sizeof(wiced_buffer_t) ), (wwd_transfer_bytes_packet_t*)( host_buffer_get_current_piece_data_pointer( buffer ) + sizeof(wiced_buffer_t) ) );
     host_buffer_release( buffer, WWD_NETWORK_TX );
+    if ( retval == WWD_SUCCESS )
+    {
+        DELAYED_BUS_RELEASE_SCHEDULE( WICED_TRUE );
+    }
     return retval;
 }
 
@@ -290,9 +292,9 @@ wwd_result_t wwd_bus_init( void )
     VERIFY_RESULT( wwd_bus_write_register_value( BUS_FUNCTION, SDIOD_CCCR_INTEN,       (uint8_t) 1, INTR_CTL_MASTER_EN | INTR_CTL_FUNC1_EN | INTR_CTL_FUNC2_EN ) );
 
 
-#if 0
+#ifdef HIGH_SPEED_SDIO_CLOCK
     /* This code is required if we want more than 25 MHz clock */
-    VERIFY_RESULT( wwd_bus_sdio_read_register_value( BUS_FUNCTION, SDIOD_CCCR_SPEED_CONTROL, 1, &byte_data ) );
+    VERIFY_RESULT( wwd_bus_read_register_value( BUS_FUNCTION, SDIOD_CCCR_SPEED_CONTROL, 1, &byte_data ) );
     if ( ( byte_data & 0x1 ) != 0 )
     {
         VERIFY_RESULT( wwd_bus_write_register_value( BUS_FUNCTION, SDIOD_CCCR_SPEED_CONTROL, 1, byte_data | SDIO_SPEED_EHS ) );
@@ -301,10 +303,10 @@ wwd_result_t wwd_bus_init( void )
     {
         return WWD_BUS_READ_REGISTER_ERROR;
     }
-#endif
+#endif /* HIGH_SPEED_SDIO_CLOCK */
 
     /* Switch to high speed mode and change to 4 bit mode */
-    host_platform_enable_high_speed_sdio( );
+    VERIFY_RESULT( host_platform_enable_high_speed_sdio( ));
 
     /* Wait till the backplane is ready */
     loop_count = 0;
@@ -366,7 +368,13 @@ wwd_result_t wwd_bus_init( void )
 
     VERIFY_RESULT( wwd_bus_read_register_value( BUS_FUNCTION, SDIOD_CCCR_IORDY, (uint8_t) 1, &byte_data ) );
 
-    VERIFY_RESULT( wwd_bus_sdio_download_firmware( ) );
+    result = wwd_bus_sdio_download_firmware( );
+
+    if ( result != WWD_SUCCESS )
+    {
+        /*  either an error or user abort */
+        return result;
+    }
 
     /* Wait for F2 to be ready */
     loop_count = 0;
@@ -404,6 +412,9 @@ wwd_result_t wwd_bus_deinit( void )
     host_platform_reset_wifi( WICED_TRUE );
 
     wwd_bus_set_resource_download_halt( WICED_FALSE );
+
+    DELAYED_BUS_RELEASE_SCHEDULE( WICED_FALSE );
+
     return WWD_SUCCESS;
 }
 
@@ -528,7 +539,7 @@ wwd_result_t wwd_bus_read_frame( /*@out@*/ wiced_buffer_t* buffer )
             return WWD_SDIO_RX_FAIL;
         }
     }
-
+    DELAYED_BUS_RELEASE_SCHEDULE( WICED_TRUE );
     return WWD_SUCCESS;
 }
 
@@ -608,7 +619,9 @@ static wwd_result_t wwd_bus_sdio_cmd52( wwd_bus_transfer_direction_t direction, 
     arg.cmd52.register_address = (unsigned int) ( address & 0x00001ffff );
     arg.cmd52.rw_flag = (unsigned int) ( ( direction == BUS_WRITE ) ? 1 : 0 );
     arg.cmd52.write_data = value;
+    WWD_BUS_STATS_INCREMENT_VARIABLE( cmd52 );
     result = host_platform_sdio_transfer( direction, SDIO_CMD_52, SDIO_BYTE_MODE, SDIO_1B_BLOCK, arg.value, 0, 0, response_expected, &sdio_response );
+    WWD_BUS_STATS_CONDITIONAL_INCREMENT_VARIABLE(( result != WWD_SUCCESS ), cmd52_fail );
     if ( response != NULL )
     {
         *response = (uint8_t) ( sdio_response & 0x00000000ff );
@@ -623,36 +636,72 @@ static wwd_result_t wwd_bus_sdio_cmd53( wwd_bus_transfer_direction_t direction, 
 
     if ( direction == BUS_WRITE )
     {
+        WWD_BUS_STATS_INCREMENT_VARIABLE( cmd53_write );
         add_log_entry(direction, function, address, data_size, data);
     }
 
     arg.value = 0;
     arg.cmd53.function_number  = (unsigned int) ( function & BUS_FUNCTION_MASK );
-    arg.cmd53.register_address = (unsigned int) ( address & 0x00001ffff );
+    arg.cmd53.register_address = (unsigned int) ( address & BIT_MASK( 17 ) );
     arg.cmd53.op_code = (unsigned int) 1;
     arg.cmd53.rw_flag = (unsigned int) ( ( direction == BUS_WRITE ) ? 1 : 0 );
     if ( mode == SDIO_BYTE_MODE )
     {
         wiced_assert( "wwd_bus_sdio_cmd53: data_size > 512 for byte mode", ( data_size <= (uint16_t) 512 ) );
         arg.cmd53.count = (unsigned int) ( data_size & 0x1FF );
+
+        result = host_platform_sdio_transfer( direction, SDIO_CMD_53, mode, SDIO_64B_BLOCK, arg.value, (uint32_t*) data, data_size, response_expected, response );
+        if( result != WWD_SUCCESS )
+        {
+            goto done;
+        }
     }
     else
     {
-        arg.cmd53.count = (unsigned int) ( ( data_size / (uint16_t)SDIO_64B_BLOCK ) & 0x0000001ff );
+#ifndef WICED_PLATFORM_DOESNT_USE_TEMP_DMA_BUFFER
+        arg.cmd53.count = (unsigned int) ( ( data_size / (uint16_t)SDIO_64B_BLOCK ) & BIT_MASK( 9 ) );
         if ( (uint32_t) ( arg.cmd53.count * (uint16_t)SDIO_64B_BLOCK ) < data_size )
         {
             ++arg.cmd53.count;
         }
         arg.cmd53.block_mode = (unsigned int) 1;
+        result = host_platform_sdio_transfer( direction, SDIO_CMD_53, mode, SDIO_64B_BLOCK, arg.value, (uint32_t*) data, data_size, response_expected, response );
+        if( result != WWD_SUCCESS )
+        {
+            goto done;
+        }
+#else /* WICED_PLATFORM_DOESNT_USE_TEMP_DMA_BUFFER */
+        uint16_t sent_data_size = (uint16_t)((( data_size / (uint16_t)SDIO_64B_BLOCK ) & BIT_MASK( 9 ) ) * SDIO_64B_BLOCK);
+
+
+        result = host_platform_sdio_transfer( direction, SDIO_CMD_53, SDIO_BLOCK_MODE, SDIO_64B_BLOCK, arg.value, (uint32_t*) data, sent_data_size, response_expected, response );
+        if( result != WWD_SUCCESS )
+        {
+            goto done;
+        }
+
+        if ( data_size > sent_data_size ) /* Send the remaining bytes using CMD53 Byte mode */
+        {
+            arg.cmd53.register_address = ( unsigned int ) ( arg.cmd53.register_address + sent_data_size ) & BIT_MASK( 17 );
+            arg.cmd53.count = (unsigned int) ( ( data_size - sent_data_size ) & BIT_MASK( 9 ) );
+            arg.cmd53.block_mode = (unsigned int) 0;
+            result = host_platform_sdio_transfer( direction, SDIO_CMD_53, SDIO_BYTE_MODE, SDIO_1B_BLOCK, arg.value, (uint32_t*) ( data + sent_data_size ), (uint16_t)( data_size - sent_data_size ), response_expected, response );
+            if( result != WWD_SUCCESS )
+            {
+                goto done;
+            }
+        }
+#endif /* WICED_PLATFORM_DOESNT_USE_TEMP_DMA_BUFFER */
     }
-
-    result = host_platform_sdio_transfer( direction, SDIO_CMD_53, mode, SDIO_64B_BLOCK, arg.value, (uint32_t*) data, data_size, response_expected, response );
-
     if ( direction == BUS_READ )
     {
+        WWD_BUS_STATS_INCREMENT_VARIABLE( cmd53_read );
         add_log_entry(direction, function, address, data_size, data);
     }
 
+done:
+    WWD_BUS_STATS_CONDITIONAL_INCREMENT_VARIABLE((( result != WWD_SUCCESS ) && ( direction == BUS_READ )), cmd53_read_fail );
+    WWD_BUS_STATS_CONDITIONAL_INCREMENT_VARIABLE((( result != WWD_SUCCESS ) && ( direction == BUS_WRITE )), cmd53_write_fail );
     return result;
 }
 
@@ -680,7 +729,20 @@ static wwd_result_t wwd_bus_sdio_download_firmware( void )
 #ifdef MFG_TEST_ALTERNATE_WLAN_DOWNLOAD
     VERIFY_RESULT( external_write_wifi_firmware_and_nvram_image( ) );
 #else
-    VERIFY_RESULT( wwd_bus_write_wifi_firmware_image( ) );
+    result = wwd_bus_write_wifi_firmware_image( );
+
+    if ( result == WWD_UNFINISHED )
+    {
+        WPRINT_WWD_INFO(("User aborted fw download\n"));
+        /* user aborted */
+        return result;
+    }
+    else if ( result != WWD_SUCCESS )
+    {
+        wiced_assert( "Failed to load wifi firmware\n", result == WWD_SUCCESS);
+        return result;
+    }
+
     VERIFY_RESULT( wwd_bus_write_wifi_nvram_image( ) );
 #endif /* ifdef MFG_TEST_ALTERNATE_WLAN_DOWNLOAD */
 
@@ -758,6 +820,8 @@ static wwd_result_t wwd_bus_sdio_download_firmware( void )
  */
 static wwd_result_t wwd_bus_sdio_abort_read( wiced_bool_t retry )
 {
+    WWD_BUS_STATS_INCREMENT_VARIABLE( read_aborts );
+
     /* Abort transfer on WLAN_FUNCTION */
     VERIFY_RESULT( wwd_bus_write_register_value( BUS_FUNCTION, SDIOD_CCCR_IOABORT, (uint8_t) 1, (uint32_t) WLAN_FUNCTION ) );
 
@@ -832,3 +896,32 @@ static wwd_result_t wwd_bus_sdio_set_oob_interrupt( uint8_t gpio_pin_number )
     return WWD_SUCCESS;
 }
 #endif
+
+void wwd_bus_init_stats( void )
+{
+#ifdef WWD_ENABLE_STATS
+    memset( &wwd_bus_stats, 0, sizeof(wwd_bus_stats) );
+#endif /* WWD_ENABLE_STATS */
+}
+
+wwd_result_t wwd_bus_print_stats( wiced_bool_t reset_after_print )
+{
+#ifdef WWD_ENABLE_STATS
+    WPRINT_MACRO(( "Bus Stats.. \n"
+                   "cmd52:%ld, cmd53_read:%ld, cmd53_write:%ld\n"
+                   "cmd52_fail:%ld, cmd53_read_fail:%ld, cmd53_write_fail:%ld\n"
+                   "oob_intrs:%ld, sdio_intrs:%ld, error_intrs:%ld, read_aborts:%ld\n",
+                   wwd_bus_stats.cmd52, wwd_bus_stats.cmd53_read, wwd_bus_stats.cmd53_write,
+                   wwd_bus_stats.cmd52_fail, wwd_bus_stats.cmd53_read_fail, wwd_bus_stats.cmd53_write_fail,
+                   wwd_bus_stats.oob_intrs, wwd_bus_stats.sdio_intrs, wwd_bus_stats.error_intrs, wwd_bus_stats.read_aborts ));
+
+    if ( reset_after_print == WICED_TRUE )
+    {
+        memset( &wwd_bus_stats, 0, sizeof(wwd_bus_stats) );
+    }
+    return WWD_SUCCESS;
+#else /* WWD_ENABLE_STATS */
+    UNUSED_VARIABLE(reset_after_print);
+    return WWD_DOES_NOT_EXIST;
+#endif /* WWD_ENABLE_STATS */
+}

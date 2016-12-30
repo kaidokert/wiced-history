@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/netdev/netdev_default.c
  *
- *   Copyright (C) 2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2014-2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,31 +41,9 @@
 #if defined(CONFIG_NET) && CONFIG_NSOCKET_DESCRIPTORS > 0
 
 #include <nuttx/net/netdev.h>
+
+#include "utils/utils.h"
 #include "netdev/netdev.h"
-
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Private Types
- ****************************************************************************/
-
-/****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
- * Public Data
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
- * Function: netdev_maskcmp
- ****************************************************************************/
 
 /****************************************************************************
  * Public Functions
@@ -98,10 +76,11 @@
 FAR struct net_driver_s *netdev_default(void)
 {
   FAR struct net_driver_s *dev;
+  net_lock_t save;
 
   /* Examine each registered network device */
 
-  netdev_semtake();
+  save = net_lock();
   for (dev = g_netdevices; dev; dev = dev->flink)
     {
       /* Is the interface in the "up" state? */
@@ -112,12 +91,12 @@ FAR struct net_driver_s *netdev_default(void)
            * state.
            */
 
-          netdev_semgive();
+          net_unlock(save);
           return dev;
         }
     }
 
-  netdev_semgive();
+  net_unlock(save);
   return NULL;
 }
 

@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /*
@@ -66,6 +89,9 @@
 
 /* Define maximum attempts to clean pending data kept from before driver initialized */
 #define UART_SLOW_CLEAN_ATTEMPTS    (64)
+
+/* FIFO Enable bit in slow UART FCR Register */
+#define UART_SLOW_FCR_FIFO_ENABLE   (0x01)
 
 /* Parity bits in slow UART LCR register */
 #define UART_EPS_BIT    (4)
@@ -438,14 +464,8 @@ typedef struct
  *               Function Declarations
  ******************************************************/
 
-static void uart_slow_toggle_txrx_interrupt( wiced_bool_t tx, wiced_bool_t enable );
-static void uart_fast_toggle_txrx_interrupt( wiced_bool_t tx, wiced_bool_t enable );
-static wiced_bool_t uart_slow_txrx_ready( wiced_bool_t tx );
-static wiced_bool_t uart_fast_txrx_ready( wiced_bool_t tx );
 static wiced_bool_t uart_slow_transmit_fifo_empty( void );
 static wiced_bool_t uart_fast_transmit_fifo_empty( void );
-static uint32_t uart_slow_irq_txrx_ready( void );
-static uint32_t uart_fast_irq_txrx_ready( void );
 
 /******************************************************
  *               Variables Definitions
@@ -593,33 +613,6 @@ static void uart_slow_disable_interrupts( void )
     uart_chipcommon_interrupt_mask(UART_SLOW_CC_INT_STATUS_MASK, 0x0);
 }
 
-void platform_uart_toggle_txrx_interrupt( platform_uart_port_t uart_port, wiced_bool_t tx, wiced_bool_t enable )
-{
-    if ( uart_port == UART_SLOW )
-    {
-        uart_slow_toggle_txrx_interrupt( tx, enable );
-    }
-    if ( uart_port == UART_FAST )
-    {
-        uart_fast_toggle_txrx_interrupt( tx, enable );
-    }
-}
-
-/* Enable/Disable tx/rx interrupts on Slow Uart */
-static void uart_slow_toggle_txrx_interrupt( wiced_bool_t tx, wiced_bool_t enable )
-{
-    uint8_t interrupt_mask_bits = tx ? UART_SLOW_IER_THRE : UART_SLOW_IER_RXRDY;
-
-    if ( enable == WICED_TRUE )
-    {
-        uart_slow_base->ier_dlm |= interrupt_mask_bits;
-    }
-    else
-    {
-        uart_slow_base->ier_dlm &= ~interrupt_mask_bits;
-    }
-}
-
 static void uart_fast_disable_interrupts( void )
 {
     /* Disable fast UART interrupts */
@@ -663,18 +656,21 @@ static void uart_slow_enable_interrupts( void )
 #endif /* !BCM4390X_UART_SLOW_POLL_MODE */
 }
 
-static void uart_fast_toggle_txrx_interrupt( wiced_bool_t tx, wiced_bool_t enable )
+/* Enable/Disable tx/rx interrupts on Slow Uart */
+static void uart_slow_toggle_txrx_interrupt( wiced_bool_t tx, wiced_bool_t enable )
 {
-    uint32_t interrupt_mask_bits = tx ? CC_SECI_STATUS_TX_FIFO_ALMOST_EMPTY : CC_SECI_STATUS_RX_FIFO_ALMOST_FULL;
+#ifndef BCM4390X_UART_SLOW_POLL_MODE
+    uint8_t interrupt_mask_bits = tx ? UART_SLOW_IER_THRE : UART_SLOW_IER_RXRDY;
 
-    if ( enable )
+    if ( enable == WICED_TRUE )
     {
-        CHIPCOMMON_SECI_STATUS_MASK_REG |= interrupt_mask_bits;
+        uart_slow_base->ier_dlm |= interrupt_mask_bits;
     }
     else
     {
-        CHIPCOMMON_SECI_STATUS_MASK_REG &= ~interrupt_mask_bits;
+        uart_slow_base->ier_dlm &= ~interrupt_mask_bits;
     }
+#endif /* !BCM4390X_UART_SLOW_POLL_MODE */
 }
 
 static void uart_fast_enable_interrupts( void )
@@ -689,6 +685,22 @@ static void uart_fast_enable_interrupts( void )
 #endif /* !BCM4390X_UART_FAST_POLL_MODE */
 }
 
+static void uart_fast_toggle_txrx_interrupt( wiced_bool_t tx, wiced_bool_t enable )
+{
+#ifndef BCM4390X_UART_FAST_POLL_MODE
+    uint32_t interrupt_mask_bits = tx ? CC_SECI_STATUS_TX_FIFO_ALMOST_EMPTY : (CC_SECI_STATUS_RX_FIFO_ALMOST_FULL | CC_SECI_STATUS_RX_IDLE_TIMER_INT);
+
+    if ( enable == WICED_TRUE )
+    {
+        CHIPCOMMON_SECI_STATUS_MASK_REG |= interrupt_mask_bits;
+    }
+    else
+    {
+        CHIPCOMMON_SECI_STATUS_MASK_REG &= ~interrupt_mask_bits;
+    }
+#endif /* !BCM4390X_UART_FAST_POLL_MODE */
+}
+
 static void uart_gci_enable_interrupts( void )
 {
 #ifndef BCM4390X_UART_GCI_POLL_MODE
@@ -698,6 +710,22 @@ static void uart_gci_enable_interrupts( void )
     /* Enable SRFAF (SECI RX FIFO Almost Full) Interrupt and SRITI
      * (SECI RX Idle Timer Interrupt) in GCI UART interrupt mask */
     GCI_INT_MASK_REG = GCI_INT_ST_MASK_SECI_RX_FIFO_ALMOST_FULL | GCI_INT_ST_MASK_SECI_RX_IDLE_TIMER_INT;
+#endif /* !BCM4390X_UART_GCI_POLL_MODE */
+}
+
+static void uart_gci_toggle_txrx_interrupt( wiced_bool_t tx, wiced_bool_t enable )
+{
+#ifndef BCM4390X_UART_GCI_POLL_MODE
+    uint32_t interrupt_mask_bits = tx ? GCI_INT_ST_MASK_SECI_TX_FIFO_ALMOST_EMPTY : (GCI_INT_ST_MASK_SECI_RX_FIFO_ALMOST_FULL | GCI_INT_ST_MASK_SECI_RX_IDLE_TIMER_INT);
+
+    if ( enable == WICED_TRUE )
+    {
+        GCI_INT_MASK_REG |= interrupt_mask_bits;
+    }
+    else
+    {
+        GCI_INT_MASK_REG &= ~interrupt_mask_bits;
+    }
 #endif /* !BCM4390X_UART_GCI_POLL_MODE */
 }
 
@@ -714,6 +742,22 @@ static void platform_uart_enable_interrupts( platform_uart_port_t uart_port )
     else if (uart_port == UART_GCI)
     {
         uart_gci_enable_interrupts();
+    }
+}
+
+void platform_uart_toggle_txrx_interrupt( platform_uart_port_t uart_port, wiced_bool_t tx, wiced_bool_t enable )
+{
+    if ( uart_port == UART_SLOW )
+    {
+        uart_slow_toggle_txrx_interrupt( tx, enable );
+    }
+    else if ( uart_port == UART_FAST )
+    {
+        uart_fast_toggle_txrx_interrupt( tx, enable );
+    }
+    else if ( uart_port == UART_GCI )
+    {
+        uart_gci_toggle_txrx_interrupt( tx, enable );
     }
 }
 #endif /* !BCM4390X_UART_SLOW_POLL_MODE || !BCM4390X_UART_FAST_POLL_MODE || !BCM4390X_UART_GCI_POLL_MODE */
@@ -984,6 +1028,9 @@ static platform_result_t uart_slow_init_internal( platform_uart_driver_t* driver
     /* Clear DLAB bit. This bit must be cleared after initial baud rate setup in order to access other registers. */
     uart_slow_base->lcr &= ~UART_SLOW_LCR_DLAB;
     wiced_assert(" Currently we do not support data width different from 8bits ", config->data_width == DATA_WIDTH_8BIT );
+
+    /* Enable FIFO */
+    uart_slow_base->iir_fcr |= UART_SLOW_FCR_FIFO_ENABLE;
 
     /* Configure stop bits and a parity */
     if ( config->parity == ODD_PARITY )
@@ -1465,32 +1512,65 @@ static platform_result_t uart_receive_bytes_irq( platform_uart_driver_t* driver,
 }
 #endif /* !BCM4390X_UART_SLOW_POLL_MODE || !BCM4390X_UART_FAST_POLL_MODE || !BCM4390X_UART_GCI_POLL_MODE */
 
-wiced_bool_t platform_uart_txrx_ready( platform_uart_port_t port, wiced_bool_t tx )
-{
-    switch ( port )
-    {
-        case UART_SLOW:
-            return uart_slow_txrx_ready( tx );
-
-        case UART_FAST:
-            return uart_fast_txrx_ready( tx );
-
-        default:
-            return WICED_FALSE;
-    }
-}
-
 static wiced_bool_t uart_slow_txrx_ready( wiced_bool_t tx )
 {
     if ( tx == WICED_TRUE )
     {
+        /* Check if TX interface is ready with space available to accept TX data */
         const uint8_t empty_mask = UART_SLOW_LSR_THRE;
         return ( ( uart_slow_base->lsr & empty_mask ) != empty_mask ) ? WICED_FALSE : WICED_TRUE;
     }
     else
     {
+        /* Check if RX interface is ready with RX data available to be read */
         return ( ( uart_slow_base->lsr & UART_SLOW_LSR_RXRDY ) == 0 ) ? WICED_FALSE : WICED_TRUE;
     }
+}
+
+static wiced_bool_t uart_fast_txrx_ready( wiced_bool_t tx )
+{
+    if ( tx == WICED_TRUE )
+    {
+        /* Check if TX interface is ready with space available to accept TX data */
+        return ( CHIPCOMMON_SECI_STATUS_REG & CC_SECI_STATUS_TX_FIFO_FULL ) ? WICED_FALSE : WICED_TRUE;
+    }
+    else
+    {
+        /* Check if RX interface is ready with RX data available to be read */
+        return ( CHIPCOMMON_SECI_STATUS_REG & CC_SECI_STATUS_RX_FIFO_EMPTY ) ? WICED_FALSE : WICED_TRUE;
+    }
+}
+
+static wiced_bool_t uart_gci_txrx_ready( wiced_bool_t tx )
+{
+    if ( tx == WICED_TRUE )
+    {
+        /* Check if TX interface is ready with space available to accept TX data */
+        return ( GCI_INT_STATUS_REG & GCI_INT_ST_MASK_SECI_TX_FIFO_FULL ) ? WICED_FALSE : WICED_TRUE;
+    }
+    else
+    {
+        /* Check if RX interface is ready with RX data available to be read */
+        return ( GCI_INT_STATUS_REG & GCI_INT_ST_MASK_SECI_RX_FIFO_NOT_EMPTY ) ? WICED_TRUE : WICED_FALSE;
+    }
+}
+
+wiced_bool_t platform_uart_txrx_ready( platform_uart_port_t port, wiced_bool_t tx )
+{
+    if ( port == UART_SLOW )
+    {
+        return uart_slow_txrx_ready( tx );
+    }
+    else if ( port == UART_FAST)
+    {
+        return uart_fast_txrx_ready( tx );
+    }
+    else if ( port == UART_GCI )
+    {
+        return uart_gci_txrx_ready( tx );
+    }
+
+    return WICED_FALSE;
 }
 
 #ifdef BCM4390X_UART_SLOW_POLL_MODE
@@ -1528,18 +1608,6 @@ platform_result_t uart_slow_receive_bytes_poll( platform_uart_driver_t* driver, 
     return ( *data_size_left_to_read == 0 ) ? PLATFORM_SUCCESS : PLATFORM_TIMEOUT;
 }
 #endif /* BCM4390X_UART_SLOW_POLL_MODE */
-
-static wiced_bool_t uart_fast_txrx_ready( wiced_bool_t tx )
-{
-    if ( tx == WICED_TRUE )
-    {
-        return ( CHIPCOMMON_SECI_STATUS_REG & CC_SECI_STATUS_TX_FIFO_FULL ) ? WICED_FALSE : WICED_TRUE;
-    }
-    else
-    {
-        return ( CHIPCOMMON_SECI_STATUS_REG & CC_SECI_STATUS_RX_FIFO_EMPTY ) ? WICED_FALSE : WICED_TRUE;
-    }
-}
 
 #ifdef BCM4390X_UART_FAST_POLL_MODE
 platform_result_t uart_fast_receive_bytes_poll( platform_uart_driver_t* driver, uint8_t* data_in, uint32_t* data_size_left_to_read, uint32_t timeout_ms )
@@ -1852,38 +1920,6 @@ void platform_uart_receive_byte( platform_uart_port_t port, uint8_t* dest )
     }
 }
 
-uint32_t platform_uart_irq_txrx_ready( platform_uart_port_t port )
-{
-    switch ( port )
-    {
-        case UART_SLOW:
-            return uart_slow_irq_txrx_ready( );
-
-        case UART_FAST:
-            return uart_fast_irq_txrx_ready( );
-
-        default:
-            return UART_NO_INTERRUPT;
-    }
-}
-
-static uint32_t uart_slow_irq_txrx_ready( void )
-{
-    uint32_t int_recvd = UART_NO_INTERRUPT;
-    uint32_t int_status = uart_slow_base->iir_fcr & UART_SLOW_IIR_INT_ID_MASK;
-
-    if ( int_status & UART_SLOW_IIR_INT_ID_RXRDY )
-    {
-        int_recvd |= UART_RX_READY;
-    }
-    if ( int_status & UART_SLOW_IIR_INT_ID_THRE )
-    {
-        int_recvd |= UART_TX_READY;
-    }
-
-    return int_recvd;
-}
-
 /*
  * Slow UART interrupt service routine
  */
@@ -1986,23 +2022,6 @@ static wiced_bool_t uart_seci_process_irq( platform_uart_driver_t* driver, uart_
 }
 #endif /* !BCM4390X_UART_FAST_POLL_MODE || !BCM4390X_UART_GCI_POLL_MODE */
 
-static uint32_t uart_fast_irq_txrx_ready( void )
-{
-    uint32_t int_recvd = UART_NO_INTERRUPT;
-    uint32_t int_status = CHIPCOMMON_SECI_STATUS_REG;
-
-    if ( int_status & CC_SECI_STATUS_RX_FIFO_ALMOST_FULL )
-    {
-        int_recvd |= UART_RX_READY;
-    }
-    if ( int_status & CC_SECI_STATUS_TX_FIFO_ALMOST_EMPTY )
-    {
-        int_recvd |= UART_TX_READY;
-    }
-
-    return int_recvd;
-}
-
 #ifndef BCM4390X_UART_FAST_POLL_MODE
 /*
  * Fast UART interrupt service routine
@@ -2070,6 +2089,84 @@ static void uart_gci_irq( platform_uart_driver_t* driver )
     platform_uart_enable_interrupts(driver->interface->port);
 }
 #endif /* !BCM4390X_UART_GCI_POLL_MODE */
+
+static uint32_t uart_slow_irq_txrx_ready( void )
+{
+    uint32_t int_recvd = UART_NO_INTERRUPT;
+
+#ifndef BCM4390X_UART_SLOW_POLL_MODE
+    uint32_t int_status = uart_slow_base->iir_fcr & UART_SLOW_IIR_INT_ID_MASK;
+
+    if ( int_status & UART_SLOW_IIR_INT_ID_RXRDY )
+    {
+        int_recvd |= UART_RX_READY;
+    }
+    if ( int_status & UART_SLOW_IIR_INT_ID_THRE )
+    {
+        int_recvd |= UART_TX_READY;
+    }
+#endif /* !BCM4390X_UART_SLOW_POLL_MODE */
+
+    return int_recvd;
+}
+
+static uint32_t uart_fast_irq_txrx_ready( void )
+{
+    uint32_t int_recvd = UART_NO_INTERRUPT;
+
+#ifndef BCM4390X_UART_FAST_POLL_MODE
+    uint32_t int_status = CHIPCOMMON_SECI_STATUS_REG;
+
+    if ( int_status & CC_SECI_STATUS_RX_FIFO_ALMOST_FULL )
+    {
+        int_recvd |= UART_RX_READY;
+    }
+    if ( int_status & CC_SECI_STATUS_TX_FIFO_ALMOST_EMPTY )
+    {
+        int_recvd |= UART_TX_READY;
+    }
+#endif /* !BCM4390X_UART_FAST_POLL_MODE */
+
+    return int_recvd;
+}
+
+static uint32_t uart_gci_irq_txrx_ready( void )
+{
+    uint32_t int_recvd = UART_NO_INTERRUPT;
+
+#ifndef BCM4390X_UART_GCI_POLL_MODE
+    uint32_t int_status = GCI_INT_STATUS_REG;
+
+    if ( int_status & GCI_INT_ST_MASK_SECI_RX_FIFO_ALMOST_FULL )
+    {
+        int_recvd |= UART_RX_READY;
+    }
+    if ( int_status & GCI_INT_ST_MASK_SECI_TX_FIFO_ALMOST_EMPTY )
+    {
+        int_recvd |= UART_TX_READY;
+    }
+#endif /* !BCM4390X_UART_GCI_POLL_MODE */
+
+    return int_recvd;
+}
+
+uint32_t platform_uart_irq_txrx_ready( platform_uart_port_t port )
+{
+    if ( port == UART_SLOW )
+    {
+        return uart_slow_irq_txrx_ready( );
+    }
+    else if ( port == UART_FAST )
+    {
+        return uart_fast_irq_txrx_ready( );
+    }
+    else if ( port == UART_GCI )
+    {
+        return uart_gci_irq_txrx_ready( );
+    }
+
+    return UART_NO_INTERRUPT;
+}
 
 /*
  * Platform UART interrupt service routine

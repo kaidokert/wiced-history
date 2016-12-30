@@ -52,14 +52,16 @@
 
 /* Allocate a new packet socket data callback */
 
-#define pkt_callback_alloc(conn)   devif_callback_alloc(&conn->list)
-#define pkt_callback_free(conn,cb) devif_callback_free(cb, &conn->list)
+#define pkt_callback_alloc(dev,conn) \
+  devif_callback_alloc(dev, &conn->list)
+#define pkt_callback_free(dev,conn,cb) \
+  devif_conn_callback_free(dev, cb, &conn->list)
 
 /****************************************************************************
  * Public Type Definitions
  ****************************************************************************/
 
-/* Representation of a uIP packet socket connection */
+/* Representation of a packet socket connection */
 
 struct devif_callback_s; /* Forward reference */
 
@@ -171,8 +173,8 @@ struct pkt_conn_s *pkt_nextconn(FAR struct pkt_conn_s *conn);
  *
  ****************************************************************************/
 
-uint16_t pkt_callback(FAR struct net_driver_s *dev,
-                      FAR struct pkt_conn_s *conn, uint16_t flags);
+uint32_t pkt_callback(FAR struct net_driver_s *dev,
+                      FAR struct pkt_conn_s *conn, uint32_t flags);
 
 /* Defined in pkt_input.c ***************************************************/
 /****************************************************************************
@@ -196,7 +198,22 @@ uint16_t pkt_callback(FAR struct net_driver_s *dev,
 
 /* pkt_input() is prototyped in include/nuttx/net/pkt.h */
 
-/* Defined in pkt_poll.c ****************************************************/
+/****************************************************************************
+ * Function: pkt_find_device
+ *
+ * Description:
+ *   Select the network driver to use with the PKT transaction.
+ *
+ * Input Parameters:
+ *   conn - PKT connection structure (not currently used).
+ *
+ * Returned Value:
+ *   A pointer to the network driver to use.
+ *
+ ****************************************************************************/
+
+FAR struct net_driver_s *pkt_find_device(FAR struct pkt_conn_s *conn);
+
 /****************************************************************************
  * Name: pkt_poll
  *

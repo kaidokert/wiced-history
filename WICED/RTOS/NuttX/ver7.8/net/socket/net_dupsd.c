@@ -49,10 +49,6 @@
 #if defined(CONFIG_NET) && CONFIG_NSOCKET_DESCRIPTORS > 0
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -60,7 +56,7 @@
  * Function: net_dupsd
  *
  * Description:
- *   Clone a socket descriptor to an arbitray descriptor number.  If file
+ *   Clone a socket descriptor to an arbitrary descriptor number.  If file
  *   descriptors are implemented, then this is called by dup() for the case
  *   of socket file descriptors.  If file descriptors are not implemented,
  *   then this function IS dup().
@@ -69,14 +65,14 @@
 
 int net_dupsd(int sockfd, int minsd)
 {
-  FAR struct socket *psock1 = sockfd_socket(sockfd);
+  FAR struct socket *psock1;
   FAR struct socket *psock2;
   int sockfd2;
   int err;
   int ret;
 
   /* Make sure that the minimum socket descriptor is within the legal range.
-   * the minimum value we receive is relative to file descriptor 0;  we need
+   * The minimum value we receive is relative to file descriptor 0;  we need
    * map it relative of the first socket descriptor.
    */
 
@@ -140,7 +136,7 @@ int net_dupsd(int sockfd, int minsd)
 
 errout:
   sched_unlock();
-  errno = err;
+  set_errno(err);
   return ERROR;
 }
 

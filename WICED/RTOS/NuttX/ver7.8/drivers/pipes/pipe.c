@@ -56,7 +56,7 @@
 #if CONFIG_DEV_PIPE_SIZE > 0
 
 /****************************************************************************
- * Definitions
+ * Pre-processor Definitions
  ****************************************************************************/
 
 #define MAX_PIPES 32
@@ -86,7 +86,9 @@ static const struct file_operations pipe_fops =
 #ifndef CONFIG_DISABLE_POLL
   pipecommon_poll,   /* poll */
 #endif
+#ifndef CONFIG_DISABLE_PSEUDOFS_OPERATIONS
   pipecommon_unlink  /* unlink */
+#endif
 };
 
 static sem_t  g_pipesem       = SEM_INITIALIZER(1);
@@ -232,7 +234,7 @@ int pipe(int fd[2])
 
       /* Register the pipe device */
 
-      ret = register_driver(devname, &pipe_fops, 0666, (void*)dev);
+      ret = register_driver(devname, &pipe_fops, 0666, (FAR void *)dev);
       if (ret != 0)
         {
           (void)sem_post(&g_pipesem);

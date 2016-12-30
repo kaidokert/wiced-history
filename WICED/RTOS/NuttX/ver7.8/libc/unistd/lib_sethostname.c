@@ -122,7 +122,7 @@ int sethostname(FAR const char *name, size_t size)
 
   flags = irqsave();
   strncpy(g_hostname, name, MIN(HOST_NAME_MAX, size));
-  g_hostname[HOST_NAME_MAX] = '\0';
+  g_hostname[MIN(HOST_NAME_MAX, size)] = '\0';
   irqrestore(flags);
 
   return 0;

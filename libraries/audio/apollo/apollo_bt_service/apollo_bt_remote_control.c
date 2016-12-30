@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -17,13 +40,13 @@
 #include <stdlib.h>
 #include "wiced_rtos.h"
 #include "wiced_result.h"
+#include "wiced_log.h"
 #include "wiced_bt_dev.h"
 #include "wiced_bt_remote_control.h"
 #include "apollo_bt_a2dp_sink_private.h"
 #include "apollo_bt_service.h"
 #include "apollo_bt_main_service_private.h"
 #include "apollo_bt_remote_control_private.h"
-#include "apollo_log.h"
 
 /******************************************************
  *                      Macros
@@ -151,7 +174,7 @@ static void bt_audio_remote_control_connection_state_cback( wiced_bt_device_addr
 
     if ( status != WICED_SUCCESS )
     {
-        apollo_log_msg(APOLLO_LOG_ERR, "%s: something went wrong, status = %d\n", __func__, status);
+        wiced_log_msg(WICED_LOG_ERR, "%s: something went wrong, status = %d\n", __func__, status);
     }
 
     if ( connection_state == REMOTE_CONTROL_CONNECTED )
@@ -164,7 +187,7 @@ static void bt_audio_remote_control_connection_state_cback( wiced_bt_device_addr
         {
             if( memcmp(remote_addr, g_apollo_bt_rc.rc_peer_address, sizeof(wiced_bt_device_address_t)) != 0 )
             {
-                apollo_log_msg(APOLLO_LOG_ERR, "%s: AVRCP and A2DP peer address don't match !!!\n", __func__);
+                wiced_log_msg(WICED_LOG_ERR, "%s: AVRCP and A2DP peer address don't match !!!\n", __func__);
                 return;
             }
         }
@@ -175,7 +198,7 @@ static void bt_audio_remote_control_connection_state_cback( wiced_bt_device_addr
         {
             g_apollo_bt_rc.a2dp_sink_ctx->user_params.rc_event_cbf( APOLLO_BT_REMOTE_CONTROL_EVENT_CONNECTED, NULL, g_apollo_bt_rc.a2dp_sink_ctx->user_params.user_context );
         }
-        apollo_log_msg(APOLLO_LOG_DEBUG0, "%s: AVRCP is CONNECTED !\n", __func__);
+        wiced_log_msg(WICED_LOG_DEBUG0, "%s: AVRCP is CONNECTED !\n", __func__);
     }
     else /* REMOTE_CONTROL_DISCONNECTED */
     {
@@ -186,7 +209,7 @@ static void bt_audio_remote_control_connection_state_cback( wiced_bt_device_addr
         {
             g_apollo_bt_rc.a2dp_sink_ctx->user_params.rc_event_cbf( APOLLO_BT_REMOTE_CONTROL_EVENT_DISCONNECTED, NULL, g_apollo_bt_rc.a2dp_sink_ctx->user_params.user_context );
         }
-        apollo_log_msg(APOLLO_LOG_DEBUG0, "%s: AVRCP is DISCONNECTED !\n", __func__);
+        wiced_log_msg(WICED_LOG_DEBUG0, "%s: AVRCP is DISCONNECTED !\n", __func__);
     }
 
     return;
@@ -198,7 +221,7 @@ static void bt_audio_remote_control_cmd_cback( wiced_bt_device_address_t remote_
 
     if ( memcmp(remote_addr, g_apollo_bt_rc.rc_peer_address, sizeof(wiced_bt_device_address_t)) != 0 )
     {
-        apollo_log_msg(APOLLO_LOG_ERR, "%s: AVRCP and A2DP peer address don't match !!!\n", __func__);
+        wiced_log_msg(WICED_LOG_ERR, "%s: AVRCP and A2DP peer address don't match !!!\n", __func__);
         return;
     }
 
@@ -208,7 +231,7 @@ static void bt_audio_remote_control_cmd_cback( wiced_bt_device_address_t remote_
         {
             bt_update_audio_player_volume(avrc_cmd->volume.volume);
             g_apollo_bt_rc.rc_volume = avrc_cmd->volume.volume;
-            apollo_log_msg(APOLLO_LOG_DEBUG4, "remote_control_cmd_cback AVRC_PDU_SET_ABSOLUTE_VOLUME vol:%d \n", avrc_cmd->volume.volume);
+            wiced_log_msg(WICED_LOG_DEBUG4, "remote_control_cmd_cback AVRC_PDU_SET_ABSOLUTE_VOLUME vol:%d \n", avrc_cmd->volume.volume);
         }
             break;
 
@@ -223,11 +246,11 @@ static void bt_audio_remote_control_rsp_cback( wiced_bt_device_address_t remote_
 {
     if ( memcmp(remote_addr, g_apollo_bt_rc.rc_peer_address, sizeof(wiced_bt_device_address_t)) != 0 )
     {
-        apollo_log_msg(APOLLO_LOG_ERR, "%s: AVRCP and A2DP peer address don't match !!!\n", __func__);
+        wiced_log_msg(WICED_LOG_ERR, "%s: AVRCP and A2DP peer address don't match !!!\n", __func__);
         return;
     }
 
-    apollo_log_msg(APOLLO_LOG_DEBUG4, "Apollo BT AVRCP: %s pdu [%d] status [%d]\n", __func__, avrc_rsp->pdu, avrc_rsp->rsp.status );
+    wiced_log_msg(WICED_LOG_DEBUG4, "Apollo BT AVRCP: %s pdu [%d] status [%d]\n", __func__, avrc_rsp->pdu, avrc_rsp->rsp.status );
 
     switch ( avrc_rsp->pdu )
     {
@@ -251,8 +274,8 @@ static void bt_audio_remote_control_rsp_cback( wiced_bt_device_address_t remote_
                 g_apollo_bt_rc.a2dp_sink_ctx->user_params.rc_event_cbf( APOLLO_BT_REMOTE_CONTROL_EVENT_TRACK_PLAYBACK_STATUS, &bt_play, g_apollo_bt_rc.a2dp_sink_ctx->user_params.user_context );
             }
 
-            apollo_log_msg(APOLLO_LOG_DEBUG1, "Apollo BT AVRCP: %s GET PLAY STATUS: play status: %s song_pos [%lu] song_len [%lu]\n",__func__,
-                           remote_control_play_status_str(play_status->play_status), play_status->song_pos, play_status->song_len );
+            wiced_log_msg(WICED_LOG_DEBUG1, "Apollo BT AVRCP: %s GET PLAY STATUS: play status: %s song_pos [%lu] song_len [%lu]\n",__func__,
+                          remote_control_play_status_str(play_status->play_status), play_status->song_pos, play_status->song_len );
         }
         break;
 
@@ -297,7 +320,7 @@ static void bt_audio_remote_control_rsp_cback( wiced_bt_device_address_t remote_
             {
                 case AVRC_EVT_PLAY_STATUS_CHANGE:
                 {
-                    apollo_log_msg(APOLLO_LOG_DEBUG1, "Apollo BT AVRCP: %s REG_NOTIF: AVRC_EVT_PLAY_STATUS_CHANGE\n",__func__);
+                    wiced_log_msg(WICED_LOG_DEBUG1, "Apollo BT AVRCP: %s REG_NOTIF: AVRC_EVT_PLAY_STATUS_CHANGE\n",__func__);
                     wiced_bt_remote_control_get_play_status_cmd( g_apollo_bt_rc.rc_peer_address );
                 }
                 break;
@@ -317,7 +340,7 @@ static void bt_audio_remote_control_rsp_cback( wiced_bt_device_address_t remote_
                     };
                     uint8_t num_attr = (uint8_t)((uint32_t)(sizeof(attrs) / sizeof(attrs[0])));
 
-                    apollo_log_msg(APOLLO_LOG_DEBUG1, "Apollo BT AVRCP: %s REG_NOTIF: AVRC_EVT_TRACK_CHANGE\n",__func__);
+                    wiced_log_msg(WICED_LOG_DEBUG1, "Apollo BT AVRCP: %s REG_NOTIF: AVRC_EVT_TRACK_CHANGE\n",__func__);
                     wiced_bt_remote_control_get_element_attr_cmd( g_apollo_bt_rc.rc_peer_address, element_id, num_attr, attrs );
                 }
                 break;
@@ -328,7 +351,7 @@ static void bt_audio_remote_control_rsp_cback( wiced_bt_device_address_t remote_
                     uint32_t attrs    = AVRC_MEDIA_ATTR_ID_TITLE;
                     uint8_t  num_attr = 1;
 
-                    apollo_log_msg(APOLLO_LOG_DEBUG1, "Apollo BT AVRCP: %s REG_NOTIF: AVRC_EVT_NOW_PLAYING_CHANGE\n",__func__);
+                    wiced_log_msg(WICED_LOG_DEBUG1, "Apollo BT AVRCP: %s REG_NOTIF: AVRC_EVT_NOW_PLAYING_CHANGE\n",__func__);
                     wiced_bt_remote_control_get_element_attr_cmd( g_apollo_bt_rc.rc_peer_address, element_id, num_attr, &attrs );
                 }
                 break;
@@ -336,23 +359,23 @@ static void bt_audio_remote_control_rsp_cback( wiced_bt_device_address_t remote_
                 case AVRC_EVT_TRACK_REACHED_END:
                 case AVRC_EVT_TRACK_REACHED_START:
                 {
-                    apollo_log_msg(APOLLO_LOG_DEBUG1, "Apollo BT AVRCP: %s event-id [%s] : \n",__func__,
-                                   remote_control_event_id_str(reg_notif->event_id));
+                    wiced_log_msg(WICED_LOG_DEBUG1, "Apollo BT AVRCP: %s event-id [%s] : \n",__func__,
+                                  remote_control_event_id_str(reg_notif->event_id));
                     wiced_bt_remote_control_get_play_status_cmd( g_apollo_bt_rc.rc_peer_address );
                 }
                 break;
 
                 case AVRC_EVT_PLAY_POS_CHANGED:
                 {
-                    apollo_log_msg(APOLLO_LOG_DEBUG4, "Apollo BT AVRCP: %s event-id [%s] : \n",__func__,
-                                   remote_control_event_id_str(reg_notif->event_id));
+                    wiced_log_msg(WICED_LOG_DEBUG4, "Apollo BT AVRCP: %s event-id [%s] : \n",__func__,
+                                  remote_control_event_id_str(reg_notif->event_id));
                     wiced_bt_remote_control_get_play_status_cmd( g_apollo_bt_rc.rc_peer_address );
                 }
                 break;
 
                 case AVRC_EVT_VOLUME_CHANGE:
                 {
-                    apollo_log_msg(APOLLO_LOG_DEBUG1, "Apollo BT AVRCP: %s event-id [%s] : volume: %d\n",__func__,
+                    wiced_log_msg(WICED_LOG_DEBUG1, "Apollo BT AVRCP: %s event-id [%s] : volume: %d\n",__func__,
                             remote_control_event_id_str(reg_notif->event_id), (int)reg_notif->param.volume);
 
                     g_apollo_bt_rc.rc_volume = reg_notif->param.volume;
@@ -372,7 +395,7 @@ static inline wiced_result_t bt_audio_a2dp_send_passthru_command( uint8_t cmd )
 
     result = wiced_bt_remote_control_send_pass_through_cmd( g_apollo_bt_rc.rc_peer_address, cmd, AVRC_STATE_PRESS, 0, NULL );
     wiced_action_jump_when_not_true( result == WICED_SUCCESS, _exit,
-                                     apollo_log_msg(APOLLO_LOG_ERR, "wiced_bt_remote_control_send_pass_through_cmd(0x%x) failed with 0x%lx !\n", cmd, (uint32_t)result) );
+                                     wiced_log_msg(WICED_LOG_ERR, "wiced_bt_remote_control_send_pass_through_cmd(0x%x) failed with 0x%lx !\n", cmd, (uint32_t)result) );
     wiced_rtos_delay_milliseconds( 50 );
     result = wiced_bt_remote_control_send_pass_through_cmd( g_apollo_bt_rc.rc_peer_address, cmd, AVRC_STATE_RELEASE, 0, NULL );
 
@@ -488,7 +511,7 @@ wiced_result_t apollo_bt_remote_control_send_command( apollo_bt_remote_control_c
     wiced_result_t result = WICED_ERROR;
 
     wiced_action_jump_when_not_true( (g_apollo_bt_rc.rc_is_initialized == WICED_TRUE) && (g_apollo_bt_rc.rc_is_connected == WICED_TRUE), _exit,
-                                      apollo_log_msg(APOLLO_LOG_ERR, "Apollo BT remote control: not initialized or not connected to any peer\n") );
+                                      wiced_log_msg(WICED_LOG_ERR, "Apollo BT remote control: not initialized or not connected to any peer\n") );
 
     switch ( cmd )
     {

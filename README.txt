@@ -1,5 +1,5 @@
 =====================================================================
-Broadcom WICED Software Development Kit 3.7.0 - README
+Cypress WICED Software Development Kit 4.0.1 - README
 =====================================================================
 
 The WICED SDK provides a full compliment of application level APIs, 
@@ -8,26 +8,27 @@ networking applications.
 
 Major features of the WICED SDK include ...
   - Low-footprint embedded Wi-Fi Driver with Client (STA), softAP and Wi-Fi Direct
-  - Wi-Fi <-> Bluetooth SmartBridge 
+  - Wi-Fi <-> Bluetooth SmartBridge and Bluetooth Internet Gateway 
   - Various RTOS/TCP stack options including
-    - ThreadX/NetX (IPv4), ThreadX/NetX Duo (IPv6), FreeRTOS/LwIP (IPv4)
-  - Support for various Broadcom Wi-Fi & combo chips
-    - BCM4390 Integrated Apps + Wi-Fi SoC
-    - BCM4390X (43909, 43907 and 43903) Integrated Apps + Wi-Fi SoC
-    - BCM43362 Wi-Fi SoC
-    - BCM43364 Wi-Fi SoC
-    - BCM43341 Wi-Fi SoC
-    - BCM43438 Wi-Fi SoC
-    - BCM43341 Wi-Fi + Bluetooth combo SoC
+    - ThreadX/NetX (IPv4), ThreadX/NetX Duo (IPv6)
+  - Support for various Cypress Wi-Fi & combo chips
+    - 4390X (43909, 43907 and 43903) integrated MCU + Wi-Fi SoC
+    - 4336X (43362, 43364) Wi-Fi SoC
+    - 4343X (43438, 4343W) Wi-Fi SoC
+    - 43340 Wi-Fi + Bluetooth combo SoC
   - Support for various MCU host platforms
     - ST Microelectronics : STM32F2xx, STM32F4xx
+    - Cypress: FM4
     - Atmel : AT91SAM4S16B
     - Freescale : K61
     - NXP : LPC17xx, LPC18xx
   - RTOS & Network abstraction layer with a simple API for UDP, TCP, HTTP, HTTPS communications
   - SSL/TLS Security Library integrated with an HTTPS library for secure web transactions
+  - DTLS security library integrated with CoAP library
+  - IoT protocols - HTTP/HTTPS, CoAP, AMQP v1.0 and MQTT
   - WICED Application Framework including Bootloader, OTA Upgrade and Factory Reset
     - Second flavor of OTA and Factory Reset (called OTA2)
+      - OTA2 Failsafe - if OTA2 extraction is interrupted, the update will recover  
   - Automated Wi-Fi Easy Setup using one of several methods
     - SoftAP & Secure HTTP server
     - Wi-Fi Protected Setup
@@ -35,6 +36,9 @@ Major features of the WICED SDK include ...
   - Simple API to provide access to MCU peripherals including UART, SPI, I2C, Timers, RTC, ADCs, DACs, etc
   - Support for multiple toolchains including GNU and IAR
   - Support for Apple AirPlay and HomeKit
+  - Audio Applications for Internet streaming and BT/Wi-Fi Rebroadcast
+  - Unified Bluetooth BTEWICED stack for Dual Mode and Low-Enery only modes - Applications may pick the desired Bluetooth stack binary at link time.
+  - Integrated Bluetooth embedded stack support for BCM20706A2 chips (when used in conjunction with the BCM43907 SoC)
  
 The WICED SDK release is structured as follows:
   apps          : Example & Test Applications
@@ -81,7 +85,7 @@ To obtain a complete list of build commands and options, enter the following tex
 base WICED SDK directory on a command line:
 $> make
 
-To compile, download and run the Wi-Fi scan application on the Broadcom BCM943362WCD4 evaluation platform, 
+To compile, download and run the Wi-Fi scan application on 943362WCD4 evaluation platform, 
 enter the following text on a command line (a period character is used to reference applications 
 in sub-directories) :
 $> make snip.scan-BCM943362WCD4 download run
@@ -90,7 +94,7 @@ The default RTOS and Network Stack components are defined in the WICED configura
 at <WICED-SDK>/tools/makefiles/wiced_config.mk. The default I/O bus component is defined in the platform
 makefile at <WICED-SDK>/platforms/<Platform>/<Platform>.mk. Defaults may be bypassed by specifying the 
 component as part of the build string if desired as shown in the following example.
-$> make snip.scan-BCM943362WCD4-FreeRTOS-LwIP-SDIO download run
+$> make snip.scan-BCM943362WCD4-ThreadX-NetX-SDIO download run
        
 Source code, headers and reference information for supported platforms are available 
 in the <WICED-SDK>/platforms directory. Source code, headers, linker scripts etc that 
@@ -134,9 +138,9 @@ Bluetooth Features
 
 
 RTOS & Network Stack Support
- * FreeRTOS / LwIP    (full source)
  * ThreadX  / NetX    (object file; free for use with WICED *ONLY*)
  * ThreadX  / NetXDuo (object file; free for use with WICED *ONLY*)
+ * NuttX (Supported only for 4390x platforms)
 
 Networking Features (IPv4 & IPv6)
  * ICMP (Ping)
@@ -147,8 +151,8 @@ Networking Features (IPv4 & IPv6)
  * IPv6 NDP, Multicast
  * DHCP (Client & Server)
  * DNS (Client & Redirect Server)
- * mDNS/DNS-SD Zeroconf Network Discovery (Broadcom Gedday)
- * TLS1.0/1.1/1.2 (object file with host abstraction layer; free for use with WICED *ONLY*)
+ * mDNS/DNS-SD Zeroconf Network Discovery (Gedday)
+ * TLS1.0/1.1/1.2 and DTLS (object file with host abstraction layer; free for use with WICED *ONLY*)
  * HTTP / HTTPS (Client & Server)
  * SNTP
  * SMTP
@@ -158,7 +162,7 @@ Application Features
  * Apple AirPlay (requires Apple authentication co-processor; available to Apple MFi licensees *ONLY*) 
  * Apple HomeKit (available to Apple MFi licensees *ONLY*)
  * Apollo Wireless Audio distribution
- * Bluetooth Audio
+ * Bluetooth Audio and BLE
  * Peripheral interfaces
    * GPIO
    * Timer / PWM
@@ -166,9 +170,15 @@ Application Features
    * SPI
    * I2C
    * RTC (Real Time Clock)
+ * Enterprise security 
+   * Support for EAP-TLS Enterprise security protocol with SteelBelt, FreeRadius, IAS, ACS and Device
+   * Support for PEAPv0 Enterprise security protocol with SteelBelt, FreeRadius and Device
  * Xively "Internet of Things" protocol
- * COAP (Constrained Application Protocol)
+ * COAP (Constrained Application Protocol) integrated with DTLS for secure connections
  * MQTT (MQ Telemetry Transport) with AWS sample application
+ * AMQP (v0.9 and v1.0)
+ * BLE Wi-Fi introducer WICED app along with iOS Application that uses BLE proximity pairing to introduce Wi-Fi network to new device and assist in on-boarding connection to Wi-Fi network.
+
 
 * WICED Application Framework
    * Bootloader
@@ -180,96 +190,59 @@ Application Features
    * System Monitor to manage the watchdog
 
 Toolchains
- * GNU make
- * IAR
+ * GNU
 
 Hardware Platforms
- BCM43362
-   * BCM943362WCD4  : Broadcom WICED Module with STM32F205 MCU mounted on BCM9WCD1EVAL1
-   * BCM943362WCD6  : Broadcom WICED Module with STM32F415 MCU mounted on BCM9WCD1EVAL1
-   * BCM943362WCD8  : Broadcom WICED Module with Atmel SAM4S16B MCU mounted on BCM9WCD1EVAL1
+ 4336X
+   * BCM943362WCD4  : WICED Module with STM32F205 MCU mounted on BCM9WCD1EVAL1
+   * BCM943362WCD6  : WICED Module with STM32F415 MCU mounted on BCM9WCD1EVAL1
+   * BCM943362WCD8  : WICED Module with Atmel SAM4S16B MCU mounted on BCM9WCD1EVAL1
    * BCM9WCDPLUS114 : WICED+ Eval Board (includes BCM43362+STM32F205 WICED+ Module and BCM20702 Bluetooth module)
-   * BCM9WCD1AUDIO  : Broadcom WICED Audio Evaluation Board (includes BCM43362, STM32F415, WM8533 audio DAC, and BCM20702 Bluetooth module)
- BCM943364
-   * BCM943364WCD1  : Broadcom WICED Module with STM32F215 MCU mounted on BCM9WCD1EVAL1
-   * BCM943364WCDA  : Broadcom WICED Module with Atmel SAM4S16B MCU mounted on BCM9WCD1EVAL1
- BCM943341
-   * BCM943341WCD1  : Broadcom BCM43341-based WICED Module with STM32F417 MCU mounted on BCM9WCD5EVAL1
- BCM94343X
-   * BCM943438WCD1  : Broadcom BCM43438-based WICED Module with STM32F411 MCU mounted on BCM9WCD9EVAL1
-   * BCM94343WWCD1  : Broadcom BCM4343W-based WICED Module with STM32F411 MCU mounted on BCM9WCD9EVAL1
-   * BCM94343WWCD2  : Broadcom BCM4343W-based WICED Module with STM32F412 MCU mounted on BCM9WCD9EVAL1
- BCM4390
-   * BCM94390WCD2   : Broadcom BCM4390 SiP-based WICED Module on BCM9WCD3EVAL1
- BCM4390X
-   * BCM943907WAE2_1     : Broadcom BCM43907WCD2 SiP-based WICED Module on BCM943907WAE_1
-   * BCM943909WCD1_3     : Broadcom BCM43909 SiP-based WICED Module on BCM943909WCDEVAL_2
-   * BCM943907AEVAL1F_1  : Broadcom BCM43907WLCSPR SiP-based WICED Module on BCM943907AEVAL1F_1
-   * BCM943907WAE_1      : Broadcom BCM43907WCD2 SiP-based WICED Module on BCM943907WAE_1
-   * BCM943903WCD1_1     : Broadcom BCM43903 SiP-based WICED Module on BCM9WCD8EVAL1
-   * BCM943903PS         : Broadcom BCM43903 Postage Stamp WICED Module on BCM943903WCD2_1
-   * BCM943907WCD1       : Broadcom BCM43907WCD1 SiP-based WICED Module on BCM943909WCDEVAL_2
-   * BCM943907WCD2       : Broadcom BCM43907WCD2 SiP-based WICED Module on BCM943909WCDEVAL_2
-
+   * BCM943364WCD1  : WICED Module with STM32F215 MCU mounted on BCM9WCD1EVAL1
+ 943340
+   * BCM943340WCD1  : BCM43340-based WICED Module with STM32F417 MCU mounted on BCM9WCD5EVAL1
+ 94343X
+   * BCM943438WCD1  : BCM43438-based WICED Module with STM32F411 MCU mounted on BCM9WCD9EVAL1
+   * BCM94343WWCD1  : BCM4343W-based WICED Module with STM32F411 MCU mounted on BCM9WCD9EVAL1
+   * BCM94343WWCD2  : BCM4343W-based WICED Module with STM32F412 MCU mounted on BCM9WCD9EVAL1
+ 4390X
+   * BCM943907WAE2_1     : BCM43907WCD2 SiP-based WICED Module on BCM943907WAE_1
+   * BCM943909WCD1_3     : BCM43909 SiP-based WICED Module on BCM943909WCDEVAL_2
+   * BCM943907AEVAL1F_1  : BCM43907WLCSPR SiP-based WICED Module on BCM943907AEVAL1F_1
+   * BCM943907WAE_1      : BCM43907WCD2 SiP-based WICED Module on BCM943907WAE_1
+   * BCM943903PS         : BCM43903 Postage Stamp WICED Module on BCM943903WCD2_1
+   * BCM943907WCD1       : BCM43907WCD1 SiP-based WICED Module on BCM943909WCDEVAL_2
+   * BCM943907WCD2       : BCM43907WCD2 SiP-based WICED Module on BCM943909WCDEVAL_2
+ FM4
+   * GAIA : FM4-176L-S6E2GM Pioneer Kit with BCM943438WLPTH_2
+ 
 Known Limitations & Notes
 ---------------------------------------------------------------------
 
- * Description - WLAN WPS Enrollee association failure
-   Workaround  - None
-   Resolution  - Targeting to be fixed in the next SDK release
-
- * Description - Switching back and forth between two A2DP smartphone devices may result in audio not being heard properly
-   Workaround  - None
-   Resolution  - Targeting to be fixed in the next SDK release
-
- * Description - With display enabled on 43907WAE running dual_hf_a2dp app, device may reset when selecting a new track from the source playlist during streaming.
-   Workaround  - None
-   Resolution  - Targeting to be fixed in the next SDK release
-
- * Description - Bluetooth pairing/connection interoperability issues with BTW and Samsung Galaxy S6
-   Workaround  - None
-   Resolution  - Targeting to be fixed in the next SDK release
-
- * Description - Track info update may not be reliable with A2DP and Airplay streaming on 43907WAE with display enabled
-   Workaround  - None
-   Resolution  - Targeting to be fixed in the next SDK release
-
- * Description - Intermittent failures during WLAN TCP Tx/Rx throughput tests on BCM94390x platforms
-   Workaround  - None
-   Resolution  - Targeting to be fixed in the next SDK release
-
- * Description - TCP Bidirectional WLAN low throughput/stability issues on BCM4343x and 4390x
-   Workaround  - None
-   Resolution  - Targeting to be fixed in the next SDK release
-
- * Description - BCM43438 P2P Group Client fails to associate with Group Owner
-   Workaround  - None
+ * Description - With AMQP v1.0, and WICED configured to send and receive data simultaneously to/from a peer device, messages sent by the peer may not be received by WICED.
+   Workaround  - The issue shall not be observed if the peer does not send and receive simultaneously
    Resolution  - Targeting to be fixed in the next SDK release
 
  * Description - Enterprise Security PEAP Authentication failure to IAS and ACS Radius Servers
    Workaround  - None
    Resolution  - Targeting to be fixed in the next SDK release
 
- * Description - Enterprise security not supported on 4390x platforms.
+ * Description - Traffic stalls on RX side when running bidirectional TCP traffic on NuttX RTOS
    Workaround  - None
    Resolution  - Targeting to be fixed in the next SDK release
 
- * Description - Factory reset failure after OTA upgrade on 43907 platform
+ * Description - TCP TX/RX throughput is lower with WPA2-AES security compared with open and mixed securities on 43903PS platform
    Workaround  - None
    Resolution  - Targeting to be fixed in the next SDK release
 
- * Features not yet supported in WICED-SDK-3.7.0
+ * Features not yet supported in WICED-SDK-4.0.1
    - IAR Embedded Workspace native support
-
    - WAC procedure is not supported for AP mode with WEP security
 
    * Platform Restrictions:
-       BCM943341WCD1
+       BCM943340WCD1
          - Wi-Fi Direct not support
          - SPI bus not supported
-       BCM4390WCD2
-         - Wi-Fi Direct not supported
-         - WPS may timeout with some access points
      
    * Wi-Fi Powersave (1)
        The WLAN chip requires an external 32kHz sleep clock input during powersave.
@@ -317,28 +290,12 @@ available from third party vendors.
 
 Building, programming and debugging of applications is achieved using either a 
 command line interface or the WICED IDE as described in the Quickstart Guide.
-
-Instructions to use the IAR toolchain are provided in a README located in the 
-following directory: <WICED-SDK>/Tools/IAR 
-
                      
 WICED Technical Support
 ---------------------------------------------------------------------
-WICED support is available on the Broadcom forum at http://forum.broadcom.com/forum.php 
+WICED support is available on Cypress Developer Community: https://community.cypress.com 
 
-Sign-up is a two-step process: Firstly, sign up to the general Broadcom support 
-forum, then apply to be a member of the WICED User Group. Be sure to identify 
-yourself to the forum moderator, access to the WICED forum is restricted to 
-bona-fide WICED customers only.
-
-Broadcom provides customer access to a wide range of additional information, including 
+Cypress provides customer access to a wide range of additional information, including 
 technical documentation, schematic diagrams, product bill of materials, PCB layout 
-information, and software updates through its customer support portal. For a CSP account, 
-contact your Broadcom Sales or Engineering support representative.
-
-                     
-Further Information
----------------------------------------------------------------------
-Further information about WICED and the WICED Development System is
-available on the WICED website at http://broadcom.com/wiced or
-by e-mailing Broadcom support at support@broadcom.com
+information, and software updates. Please contact your Cypress Sales or Engineering 
+support representative or Cypress support at http://www.cypress.com/support.

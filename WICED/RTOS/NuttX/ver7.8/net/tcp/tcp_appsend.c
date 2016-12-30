@@ -56,22 +56,6 @@
 #include "tcp/tcp.h"
 
 /****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Public Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Variables
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -97,7 +81,7 @@
  ****************************************************************************/
 
 void tcp_appsend(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
-                 uint16_t result)
+                 uint32_t result)
 {
   uint8_t hdrlen;
 
@@ -130,9 +114,22 @@ void tcp_appsend(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
     }
 #endif /* CONFIG_NET_IPv6 */
 
+  /* Check If the device went down */
+
+  if ((result & NETDEV_DOWN) != 0)
+    {
+      /* If so, make sure that the connection is marked closed
+       * and do not try to send anything.
+       */
+
+      dev->d_sndlen = 0;
+      conn->tcpstateflags = TCP_CLOSED;
+      nllvdbg("TCP state: NETDEV_DOWN\n");
+    }
+
   /* Check for connection aborted */
 
-  if ((result & TCP_ABORT) != 0)
+  else if ((result & TCP_ABORT) != 0)
     {
       dev->d_sndlen = 0;
       conn->tcpstateflags = TCP_CLOSED;
@@ -159,7 +156,7 @@ void tcp_appsend(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
   else
     {
 #ifdef CONFIG_NET_TCP_WRITE_BUFFERS
-      DEBUGASSERT(dev->d_sndlen >= 0 && dev->d_sndlen <= conn->mss);
+      DEBUGASSERT(dev->d_sndlen <= conn->mss);
 #else
       /* If d_sndlen > 0, the application has data to be sent. */
 
@@ -209,7 +206,7 @@ void tcp_appsend(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
  ****************************************************************************/
 
 void tcp_rexmit(FAR struct net_driver_s *dev, FAR struct tcp_conn_s *conn,
-                uint16_t result)
+                uint32_t result)
 {
   uint8_t hdrlen;
 

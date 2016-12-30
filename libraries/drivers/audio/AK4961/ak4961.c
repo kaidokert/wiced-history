@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -46,6 +69,10 @@
 /******************************************************
  *                    Constants
  ******************************************************/
+
+#define AK4961_REG_FC1                      (0x0000)
+#define AK4961_REG_FC2                      (0x0001)
+#define AK4961_REG_FC3                      (0x0002)
 
 #define AK4961_REG_PM1                      (0x0003)
 #define AK4961_REG_PM2                      (0x0004)
@@ -94,6 +121,8 @@
 #define AK4961_REG_AIN12_SYNC_DOMAIN_SET    (0x0068)
 #define AK4961_REG_AIN34_SYNC_DOMAIN_SET    (0x0069)
 #define AK4961_REG_ADC_SYNC_DOMAIN_SET      (0x006A)
+#define AK4961_REG_SB3_DSPO_SYNC_DOMAIN_SET (0x006C)
+#define AK4961_REG_DSPO24_SYNC_DOMAIN_SET   (0x006D)
 #define AK4961_REG_SDTO1A_SRC_SEL           (0x0072)
 #define AK4961_REG_SDTO1B_SRC_SEL           (0x0073)
 #define AK4961_REG_SDTO2_SRC_SEL            (0x0074)
@@ -101,8 +130,48 @@
 #define AK4961_REG_SDTO4_SRC_SEL            (0x0076)
 #define AK4961_REG_DAC1_SRC_SEL             (0x0079)
 #define AK4961_REG_DAC2_SRC_SEL             (0x007A)
+#define AK4961_REG_DSPI1_SRC_SEL            (0x007B)
+#define AK4961_REG_DSPI2_SRC_SEL            (0x007C)
+#define AK4961_REG_DSPI3_SRC_SEL            (0x007D)
+#define AK4961_REG_DSPI4_SRC_SEL            (0x007E)
+#define AK4961_REG_DSPI5_SRC_SEL            (0x007F)
+
 #define AK4961_REG_SDTIO1_IF_FORMAT         (0x008B)
 #define AK4961_REG_CODEC_IF_FORMAT          (0x008F)
+
+#define AK4961_REG_DSP_SETTING1             (0x0094)
+#define AK4961_REG_DSP_SETTING2             (0x0096)
+#define AK4961_REG_DSP_SETTING3             (0x0097)
+#define AK4961_REG_DSP_SETTING4             (0x0098)
+
+#define AK4961_REG_CRAM_OP_RUN_STATE        (0x00CF)
+
+#define AK4961_REG_PRAM_READY               (0x00D1)
+
+#define AK4961_REG_CRC_RESULT1              (0x00D3)
+#define AK4961_REG_CRC_RESULT2              (0x00D4)
+
+/* 00H Flow Control 1 */
+#define AK4961_FC1_PMSW                     (0x1)
+#define AK4961_FC1_PMSW_MASK                (0x01)
+#define AK4961_FC1_PMSW_SHIFT               (0)
+#define AK4961_FC1_PMSW_BITS                (1)
+#define AK4961_FC1_SWRSTN                   (0x2)
+#define AK4961_FC1_SWRSTN_MASK              (0x02)
+#define AK4961_FC1_SWRSTN_SHIFT             (1)
+#define AK4961_FC1_SWRSTN_BITS              (1)
+
+/* 01H Flow Control 2 */
+#define AK4961_FC2_DLRDY                    (0x1)
+#define AK4961_FC2_DLRDY_MASK               (0x01)
+#define AK4961_FC2_DLRDY_SHIFT              (0)
+#define AK4961_FC2_DLRDY_BITS               (1)
+
+/* 02H Flow Control 3 */
+#define AK4961_FC3_DSPRSTN                  (0x1)
+#define AK4961_FC3_DSPRSTN_MASK             (0x01)
+#define AK4961_FC3_DSPRSTN_SHIFT            (0)
+#define AK4961_FC3_DSPRSTN_BITS             (1)
 
 /* 03H Power Management 1 */
 #define AK4961_PM1_PMPLL1                   (0x1)
@@ -376,6 +445,22 @@
 #define AK4961_ADC_SYNC_SET_SDCDC_SHIFT     (0)
 #define AK4961_ADC_SYNC_SET_SDCDC_BITS      (3)
 
+/* 6CH SB3/DSPO sync domain setting */
+#define AK4961_SB3_SYNC_SET_SDSB3_MASK      (0x70)
+#define AK4961_SB3_SYNC_SET_SDSB3_SHIFT     (4)
+#define AK4961_SB3_SYNC_SET_SDSB3_BITS      (3)
+#define AK4961_DSPO_SYNC_SET_SDDSP_MASK     (0x07)
+#define AK4961_DSPO_SYNC_SET_SDDSP_SHIFT    (0)
+#define AK4961_DSPO_SYNC_SET_SDDSP_BITS     (3)
+
+/* 6DH DSPO2/4 sync domain setting */
+#define AK4961_DSPO2_SYNC_SET_SDDSPO2_MASK  (0x70)
+#define AK4961_DSPO2_SYNC_SET_SDDSPO2_SHIFT (4)
+#define AK4961_DSPO2_SYNC_SET_SDDSPO2_BITS  (3)
+#define AK4961_DSPO4_SYNC_SET_SDDSPO4_MASK  (0x07)
+#define AK4961_DSPO4_SYNC_SET_SDDSPO4_SHIFT (0)
+#define AK4961_DSPO4_SYNC_SET_SDDSPO4_BITS  (3)
+
 /* 72H-88H Source Select */
 #define AK4961_SRC_SEL_MASK                 (0x1F)
 #define AK4961_SRC_SEL_SHIFT                (0)
@@ -387,6 +472,55 @@
 #define AK4961_SDTIO1_IF_FMT_DLC1_32BIT     (0x04)
 #define AK4961_SDTIO1_IF_FMT_DLC1_MASK      (0x07)
 
+/* 94H DSP Setting 1 */
+#define AK4961_DSP_SET1_DRMS_MASK           (0xC0)
+#define AK4961_DSP_SET1_DRMS_SHIFT          (6)
+#define AK4961_DSP_SET1_DRMS_BITS           (2)
+#define AK4961_DSP_SET1_DRAD_MASK           (0x30)
+#define AK4961_DSP_SET1_DRAD_SHIFT          (4)
+#define AK4961_DSP_SET1_DRAD_BITS           (2)
+#define AK4961_DSP_SET1_BANK_MASK           (0x0F)
+#define AK4961_DSP_SET1_BANK_SHIFT          (0)
+#define AK4961_DSP_SET1_BANK_BITS           (4)
+
+/* 96H DSP Setting 2 */
+#define AK4961_DSP_SET2_POMODE_MASK         (0x08)
+#define AK4961_DSP_SET2_POMODE_SHIFT        (3)
+#define AK4961_DSP_SET2_POMODE_BITS         (1)
+#define AK4961_DSP_SET2_WAVP_MASK           (0x03)
+#define AK4961_DSP_SET2_WAVP_SHIFT          (0)
+#define AK4961_DSP_SET2_WAVP_BITS           (2)
+
+/* 97H DSP Setting 3 */
+#define AK4961_DSP_SET3_EDNOPDIS_MASK       (0x10)
+#define AK4961_DSP_SET3_EDNOPDIS_SHIFT      (4)
+#define AK4961_DSP_SET3_EDNOPDIS_BITS       (1)
+
+/* 98H DSP Setting 4 */
+#define AK4961_DSP_SET4_DSPCKADJ_MASK       (0xFF)
+#define AK4961_DSP_SET4_DSPCKADJ_SHIFT      (0)
+#define AK4961_DSP_SET4_DSPCKADJ_BITS       (8)
+
+/* CFH CRAM Operation during Run State */
+#define AK4961_CRAM_OP_RUNC                 (0x1)
+#define AK4961_CRAM_OP_MASK                 (0x01)
+#define AK4961_CRAM_OP_SHIFT                (0)
+#define AK4961_CRAM_OP_BITS                 (1)
+
+/* D1H PRAM Ready */
+#define AK4961_PRAM_READY_PRIF              (0x1)
+#define AK4961_PRAM_READY_MASK              (0x01)
+#define AK4961_PRAM_READY_SHIFT             (0)
+#define AK4961_PRAM_READY_BITS              (1)
+
+/* D3H-D4H CRC Result 1&2 */
+#define AK4961_CRC_RESULT1_MASK             (0xff)
+#define AK4961_CRC_RESULT1_SHIFT            (0)
+#define AK4961_CRC_RESULT1_BITS             (8)
+#define AK4961_CRC_RESULT2_MASK             (0xff)
+#define AK4961_CRC_RESULT2_SHIFT            (0)
+#define AK4961_CRC_RESULT2_BITS             (8)
+#define AK4961_CRC_RESULT_BYTES             (2)
 
 /* Default input volume gain settings. */
 #define AK4961_IVL_0DB_DEFAULT              (0x00)
@@ -486,6 +620,11 @@ enum ak4961_source_address_select
     AK4961_SOURCE_ADDRESS_SELECT_SDTI4  = 0x07,
     AK4961_SOURCE_ADDRESS_SELECT_ADC1   = 0x09,
     AK4961_SOURCE_ADDRESS_SELECT_ADC2   = 0x0A,
+    AK4961_SOURCE_ADDRESS_SELECT_DSPO1  = 0x0E,
+    AK4961_SOURCE_ADDRESS_SELECT_DSPO2  = 0x0F,
+    AK4961_SOURCE_ADDRESS_SELECT_DSPO3  = 0x10,
+    AK4961_SOURCE_ADDRESS_SELECT_DSPO4  = 0x11,
+    AK4961_SOURCE_ADDRESS_SELECT_DSPO5  = 0x12,
 };
 
 
@@ -522,6 +661,8 @@ struct ak4961_fs_mcki_map
     uint32_t        mcki;
     uint16_t        pll1_ref_div;
     uint16_t        pll1_fb_div;
+    uint16_t        mdiv2;
+    uint16_t        mdivd;
 };
 
 struct ak4961_fs2cm_map
@@ -539,6 +680,11 @@ struct ak4961_dac
     uint16_t                        reg_dac_mono_mix;
     uint16_t                        reg_dac_src_sel;
     uint16_t                        reg_lch_out_vol;
+};
+
+struct ak4961_dsp
+{
+    uint16_t                        reg_dsp_src_sel;
 };
 
 struct ak4961_adc
@@ -675,23 +821,22 @@ static const ak4961_fs_map_t fs_map[] =
 /* The divider values are chosen such that the output freq is fs*(cm value) */
 ak4961_fs_mcki_map_t ak4961_fs2mcki_map[] =
 {
-/*       fs            mclk           Ref div        Pll Ref Clk     fb div    Pll out/fs */
-    {    8000,        12288000,       0x0017,        /*512,*/        0x0007,   /*512*/  },
-    {    11025,       11289600,       0x0003,        /*2822.4,*/     0x0002,   /*512*/  },
-    {    12000,       12288000,       0x0017,        /*512,*/        0x000B,   /*512*/  },
-    {    16000,       12288000,       0x0017,        /*512,*/        0x000F,   /*512*/  },
-    {    22050,       11289600,       0x0003,        /*2822.4,*/     0x0003,   /*512*/  },
-    {    24000,       12288000,       0x0017,        /*512,*/        0x0017,   /*512*/  },
-    {    32000,       12288000,       0x0017,        /*512,*/        0x001F,   /*512*/  },
-    {    44100,       11289600,       0x0003,        /*2822.4,*/     0x0007,   /*512*/  },
-    {    48000,       12288000,       0x0017,        /*512,*/        0x002F,   /*512*/  },
-    {    64000,       12288000,       0x0017,        /*512,*/        0x001F,   /*256*/  },
-    {    88200,       11289600,       0x0003,        /*2822.4,*/     0x0007,   /*256*/  },
-    {    96000,       12288000,       0x0017,        /*512,*/        0x002F,   /*256*/  },
-    {    128000,      12288000,       0x0017,        /*512,*/        0x001F,   /*128*/  },
-    {    176400,      11289600,       0x0003,        /*2822.4,*/     0x0007,   /*128*/  },
-    {    192000,      24576000,       0x002F,        /*512,*/        0x002F,   /*128*/  },
-
+/*       fs            mclk           Ref div        Pll Ref Clk    fb div      mdiv2      codec mclk    mdivd      dsp mclk     */
+    {    8000,        12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*512*/      0x0004,   /*122.88*/  },
+    {    11025,       11289600,       0x0003,        /*2822.4*/     0x0027,     0x0004,     /*512*/      0x0004,   /*112.896*/ },
+    {    12000,       12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*512*/      0x0004,   /*122.88*/  },
+    {    16000,       12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*512*/      0x0004,   /*122.88*/  },
+    {    22050,       11289600,       0x0003,        /*2822.4*/     0x0027,     0x0004,     /*512*/      0x0004,   /*112.896*/ },
+    {    24000,       12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*512*/      0x0004,   /*122.88*/  },
+    {    32000,       12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*512*/      0x0004,   /*122.88*/  },
+    {    44100,       11289600,       0x0003,        /*2822.4*/     0x0027,     0x0004,     /*512*/      0x0004,   /*112.896*/ },
+    {    48000,       12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*512*/      0x0004,   /*122.88*/  },
+    {    64000,       12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*256*/      0x0004,   /*122.88*/  },
+    {    88200,       11289600,       0x0003,        /*2822.4*/     0x0027,     0x0004,     /*256*/      0x0004,   /*112.896*/ },
+    {    96000,       12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*256*/      0x0004,   /*122.88*/  },
+    {    128000,      12288000,       0x0003,        /*3072*/       0x0027,     0x0004,     /*128*/      0x0004,   /*122.88*/  },
+    {    176400,      22579200,       0x0007,        /*2822.4*/     0x0027,     0x0004,     /*128*/      0x0004,   /*112.896*/ },
+    {    192000,      24576000,       0x0007,        /*3072*/       0x0027,     0x0004,     /*128*/      0x0004,   /*122.88*/  },
 };
 
 static const ak4961_fs2cm_map_t ak4961_fs_cm_dsmlp_map[] =
@@ -735,6 +880,27 @@ const ak4961_sync_domain_t ak4961_sync_domain_sdcdc =
     .reg    = AK4961_REG_ADC_SYNC_DOMAIN_SET,
     .shift  = AK4961_ADC_SYNC_SET_SDCDC_SHIFT,
     .mask   = AK4961_ADC_SYNC_SET_SDCDC_MASK,
+};
+
+const ak4961_sync_domain_t ak4961_sync_domain_sddsp =
+{
+    .reg    = AK4961_REG_SB3_DSPO_SYNC_DOMAIN_SET,
+    .shift  = AK4961_DSPO_SYNC_SET_SDDSP_SHIFT,
+    .mask   = AK4961_DSPO_SYNC_SET_SDDSP_MASK,
+};
+
+const ak4961_sync_domain_t ak4961_sync_domain_sddspo2 =
+{
+    .reg    = AK4961_REG_DSPO24_SYNC_DOMAIN_SET,
+    .shift  = AK4961_DSPO2_SYNC_SET_SDDSPO2_SHIFT,
+    .mask   = AK4961_DSPO2_SYNC_SET_SDDSPO2_MASK,
+};
+
+const ak4961_sync_domain_t ak4961_sync_domain_sddspo4 =
+{
+    .reg    = AK4961_REG_DSPO24_SYNC_DOMAIN_SET,
+    .shift  = AK4961_DSPO4_SYNC_SET_SDDSPO4_SHIFT,
+    .mask   = AK4961_DSPO4_SYNC_SET_SDDSPO4_MASK,
 };
 
 const ak4961_source_port_t ak4961_source_port_sdti1a =
@@ -793,6 +959,36 @@ const ak4961_source_port_t ak4961_source_port_adc2 =
 };
 #endif
 
+const ak4961_source_port_t ak4961_source_port_dspo1 =
+{
+    .source_address_select  = AK4961_SOURCE_ADDRESS_SELECT_DSPO1,
+    .sync_domain            = &ak4961_sync_domain_sddsp,
+};
+
+const ak4961_source_port_t ak4961_source_port_dspo2 =
+{
+    .source_address_select  = AK4961_SOURCE_ADDRESS_SELECT_DSPO2,
+    .sync_domain            = &ak4961_sync_domain_sddspo2,
+};
+
+const ak4961_source_port_t ak4961_source_port_dspo3 =
+{
+    .source_address_select  = AK4961_SOURCE_ADDRESS_SELECT_DSPO3,
+    .sync_domain            = &ak4961_sync_domain_sddsp,
+};
+
+const ak4961_source_port_t ak4961_source_port_dspo4 =
+{
+    .source_address_select  = AK4961_SOURCE_ADDRESS_SELECT_DSPO4,
+    .sync_domain            = &ak4961_sync_domain_sddspo4,
+};
+
+const ak4961_source_port_t ak4961_source_port_dspo5 =
+{
+    .source_address_select  = AK4961_SOURCE_ADDRESS_SELECT_DSPO5,
+    .sync_domain            = &ak4961_sync_domain_sddsp,
+};
+
 const ak4961_sink_port_t ak4961_sink_port_sdto1a =
 {
     .reg_source_address     = AK4961_REG_SDTO1A_SRC_SEL,
@@ -832,6 +1028,36 @@ const ak4961_sink_port_t ak4961_sink_port_dac1 =
 const ak4961_sink_port_t ak4961_sink_port_dac2 =
 {
     .reg_source_address     = AK4961_REG_DAC2_SRC_SEL,
+    .sync_domain            = NULL /* auto */,
+};
+
+const ak4961_sink_port_t ak4961_sink_port_dspi1 =
+{
+    .reg_source_address     = AK4961_REG_DSPI1_SRC_SEL,
+    .sync_domain            = NULL /* auto */,
+};
+
+const ak4961_sink_port_t ak4961_sink_port_dspi2 =
+{
+    .reg_source_address     = AK4961_REG_DSPI2_SRC_SEL,
+    .sync_domain            = NULL /* auto */,
+};
+
+const ak4961_sink_port_t ak4961_sink_port_dspi3 =
+{
+    .reg_source_address     = AK4961_REG_DSPI3_SRC_SEL,
+    .sync_domain            = NULL /* auto */,
+};
+
+const ak4961_sink_port_t ak4961_sink_port_dspi4 =
+{
+    .reg_source_address     = AK4961_REG_DSPI4_SRC_SEL,
+    .sync_domain            = NULL /* auto */,
+};
+
+const ak4961_sink_port_t ak4961_sink_port_dspi5 =
+{
+    .reg_source_address     = AK4961_REG_DSPI5_SRC_SEL,
     .sync_domain            = NULL /* auto */,
 };
 
@@ -963,6 +1189,11 @@ static const struct ak4961_adc ak4961_adc2 =
     .pm6_pmad_shift             = AK4961_PM6_PMAD2M_SHIFT,
 };
 
+const ak4961_dsp_t ak4961_dsp1 =
+{
+    .reg_dsp_src_sel            = AK4961_REG_DSPI1_SRC_SEL,
+};
+
 const ak4961_dac_route_t ak4961_dac1_hp_route =
 {
     .dac                        = &ak4961_dac1,
@@ -1011,7 +1242,7 @@ extern wiced_result_t ak4961_reg_init( ak4961_device_cmn_data_t *ak4961 );
 extern wiced_result_t ak4961_reg_reset( ak4961_device_cmn_data_t *ak4961 );
 extern wiced_result_t ak4961_reg_read( ak4961_device_cmn_data_t *ak4961, uint16_t register_address, uint8_t *reg_data );
 extern wiced_result_t ak4961_reg_write( ak4961_device_cmn_data_t *ak4961, uint16_t register_address, uint8_t reg_data );
-
+extern wiced_result_t ak4961_ram_write( ak4961_device_cmn_data_t *ak4961, const uint8_t *data, uint32_t data_length );
 
 /******************************************************
  *               Function Definitions
@@ -1060,6 +1291,109 @@ static uint8_t ak4961_double_range_to_index( ak4961_device_cmn_data_t *ak4961, d
     return idx;
 }
 
+static wiced_result_t ak4961_pram_write(ak4961_device_cmn_data_t *ak4961, const ak4961_dsp_ram_resource_t *pram_res, uint8_t pram_tab_size)
+{
+    ak4961_device_runtime_data_t    *rtd            = ak4961->rtd;
+    uint32_t                        sample_rate     = rtd->sample_rate;
+    const uint8_t                   *pram_buf;
+    uint32_t                        pram_res_size;
+    uint8_t                         i;
+
+    for( i = 0; i < pram_tab_size; i++)
+    {
+        if(sample_rate == pram_res[i].sample_rate)
+            break;
+    }
+
+    if ( i == pram_tab_size )
+    {
+        /* Requested sample rate cannot be supported */
+        return WICED_UNSUPPORTED;
+    }
+
+    AK4961_VERIFY( ak4961_get_dsp_ram_resource( pram_res[i].ram_res, &pram_buf, &pram_res_size ) );
+
+    /* Need to subtract AK4961_CRC_RESULT_BYTES */
+    pram_res_size = (pram_res_size - AK4961_CRC_RESULT_BYTES);
+
+    AK4961_VERIFY( ak4961_ram_write( ak4961, pram_buf, pram_res_size) );
+
+    AK4961_VERIFY( ak4961_free_dsp_ram_resource( pram_res[i].ram_res, pram_buf ) );
+
+    return WICED_SUCCESS;
+}
+
+static wiced_result_t ak4961_cram_write(ak4961_device_cmn_data_t *ak4961, const ak4961_dsp_ram_resource_t *cram_res, uint8_t cram_tab_size)
+{
+    ak4961_device_runtime_data_t    *rtd            = ak4961->rtd;
+    uint32_t                        sample_rate     = rtd->sample_rate;
+    const uint8_t                   *cram_buf;
+    uint32_t                        cram_res_size;
+    uint8_t                         i;
+
+    for( i = 0; i < cram_tab_size; i++)
+    {
+        if(sample_rate == cram_res[i].sample_rate)
+            break;
+    }
+
+    if ( i == cram_tab_size )
+    {
+        /* Requested sample rate cannot be supported */
+        return WICED_UNSUPPORTED;
+    }
+
+    AK4961_VERIFY( ak4961_get_dsp_ram_resource( cram_res[i].ram_res, &cram_buf, &cram_res_size ) );
+
+    /* Need to subtract AK4961_CRC_RESULT_BYTES */
+    cram_res_size = (cram_res_size - AK4961_CRC_RESULT_BYTES);
+
+    AK4961_VERIFY( ak4961_ram_write( ak4961, cram_buf, cram_res_size) );
+
+    AK4961_VERIFY( ak4961_free_dsp_ram_resource( cram_res[i].ram_res, cram_buf ) );
+
+    return WICED_SUCCESS;
+}
+
+static wiced_result_t ak4961_ram_download(ak4961_device_cmn_data_t *ak4961, const ak4961_dsp_ram_resource_t *pram_res, uint8_t pram_tab_size, const ak4961_dsp_ram_resource_t *cram_res, uint8_t cram_tab_size)
+{
+    /* PMSW = SWRSTN bits = 0 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC1, AK4961_FC1_PMSW_MASK, 0 ) );
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC1, AK4961_FC1_SWRSTN_MASK, 0 ) );
+    /* PMSW = SWRSTN bits = 1 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC1, AK4961_FC1_PMSW_MASK, AK4961_FC1_PMSW ) );
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC1, AK4961_FC1_SWRSTN_MASK, AK4961_FC1_SWRSTN ) );
+
+    /* DSP setting register1&2 sould be initialized to zero after DSP Power-up */
+    /* DRAMS = DRAD = BANK bits = 0 */
+    AK4961_VERIFY( ak4961_reg_write( ak4961, AK4961_REG_DSP_SETTING1, 0 ) );
+    /* POMODE = WAVP bits = 0 */
+    AK4961_VERIFY( ak4961_reg_write( ak4961, AK4961_REG_DSP_SETTING2, 0 ) );
+
+    /* DSPRSTN bit = 0 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC3, AK4961_FC3_DSPRSTN_MASK, 0 ) );
+    /* DLRDY bit = 1 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC2, AK4961_FC2_DLRDY_MASK, AK4961_FC2_DLRDY ) );
+    /* PRIF bit = 1 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_PRAM_READY, AK4961_PRAM_READY_MASK, AK4961_PRAM_READY_PRIF ) );
+
+    /* PRAM Download*/
+    AK4961_VERIFY( ak4961_pram_write( ak4961, pram_res, pram_tab_size) );
+
+    /* PRIF bit = 0 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_PRAM_READY, AK4961_PRAM_READY_MASK, 0 ) );
+
+    /* CRAM Download */
+    AK4961_VERIFY( ak4961_cram_write( ak4961, cram_res, cram_tab_size) );
+
+    /* DLRDY bit = 0 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC2, AK4961_FC2_DLRDY_MASK, 0 ) );
+
+    /* DSPRSTN bit = 1 */
+    AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC3, AK4961_FC3_DSPRSTN_MASK, AK4961_FC3_DSPRSTN ) );
+
+    return WICED_SUCCESS;
+}
 
 wiced_result_t ak4961_chip_reset(ak4961_device_cmn_data_t *ak4961)
 {
@@ -1266,12 +1600,14 @@ wiced_result_t ak4961_spll(ak4961_device_data_t *dd, wiced_audio_config_t *confi
 
     /* PLLCLK1->CODECCLK. */
     AK4961_VERIFY( ak4961_upd_bits(ak4961, AK4961_REG_CODEC_CLK_SRC_SEL, AK4961_CODEC_CLK_SRC_SEL_MCKS2_MASK, AK4961_CLK_SRC_ADDR_PLLCLK1) );
+    /* Set codec clock divider */
+    AK4961_VERIFY( ak4961_upd_bits(ak4961, AK4961_REG_CODEC_CLK_DIV, AK4961_CODEC_CLK_DIV_MDIV2_MASK, fs_mcki_entry->mdiv2 ) );
 
     /* PLLCLK1->DSPCLK. */
     AK4961_VERIFY( ak4961_upd_bits(ak4961, AK4961_REG_DSP_MCLK_SRC_SEL, AK4961_DSP_MCLK_SRC_SEL_CKSD_MASK, AK4961_CLK_SRC_ADDR_PLLCLK1) );
     if ( ( fs_mcki_entry->mcki >= (fs_mcki_entry->fs * 128) ) && ( fs_mcki_entry->mcki <= 24576000 ) )
     {
-        AK4961_VERIFY( ak4961_upd_bits(ak4961, AK4961_REG_BUS_CLK_DIV, AK4961_BUS_CLK_DIV_MDIVD_MASK, 0) );
+        AK4961_VERIFY( ak4961_upd_bits(ak4961, AK4961_REG_BUS_CLK_DIV, AK4961_BUS_CLK_DIV_MDIVD_MASK, fs_mcki_entry->mdivd ) );
     }
     else
     {
@@ -1924,6 +2260,69 @@ wiced_result_t ak4961_get_capture_volume_range(void *driver_data, double *min_vo
         /* Digital MIC. */
         *min_volume_in_decibels = 0.0;
         *max_volume_in_decibels = 0.0;
+    }
+
+    return WICED_SUCCESS;
+}
+
+wiced_result_t ak4961_set_effect(void *driver_data, uint8_t mode)
+{
+    ak4961_device_data_t            *dd              = (ak4961_device_data_t *) driver_data;
+    ak4961_device_cmn_data_t        *ak4961          = dd->cmn;
+    ak4961_device_runtime_data_t    *rtd             = ak4961->rtd;
+    const ak4961_route_data_t       *route_data      = (const ak4961_route_data_t *) dd->route;
+    const ak4961_route_id_t         route_id         = route_data->id;
+
+    if ( ( ( rtd->init & ( 1 << route_id ) ) == 0 ) || ( ( rtd->init & ( 1 << route_id ) ) == 0 ) )
+    {
+        return WICED_NOTUP;
+    }
+    else if( mode >= AK4961_DSP_EFFECT_MODE_MAX )
+    {
+        return WICED_BADARG;
+    }
+
+    if (route_data->device_type == AK4961_DEVICE_TYPE_PLAYBACK)
+    {
+        ak4961_dac_route_data_t        *dac_data            = (ak4961_dac_route_data_t *) route_data;
+        const ak4961_dsp_effect_data_t *dsp_effect_data     = &ak4961->dsp_effect_data[mode];
+        const ak4961_dac_route_t       *dac_route           = (const ak4961_dac_route_t *) dac_data->base.device_route->instance;
+        const ak4961_dac_t             *dac                 = dac_route->dac;
+        const ak4961_dsp_t             *dsp                 = dsp_effect_data->dsp;
+        const uint8_t                  *dsp_mode_ram        = dsp_effect_data->dsp_mode_ram;
+        uint8_t                        dsp_mode_ram_size    = dsp_effect_data->dsp_mode_ram_size;
+
+        if( mode == AK4961_DSP_EFFECT_MODE_NONE )
+        {
+            const ak4961_sync_domain_t *sync_domain = dac_data->source_port->sync_domain;
+
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, sync_domain->reg, sync_domain->mask, dac_data->sync_domain_select << sync_domain->shift ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, dac->reg_dac_src_sel, AK4961_SRC_SEL_MASK, dac_data->source_port->source_address_select ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_ADC_SYNC_DOMAIN_SET, AK4961_ADC_SYNC_SET_SDCDC_MASK, dac_data->sync_domain_select ) << AK4961_ADC_SYNC_SET_SDCDC_SHIFT );
+
+            /* Power-down DSP */
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC1, AK4961_FC1_PMSW_MASK, 0 ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC1, AK4961_FC1_SWRSTN_MASK, 0 ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_FC3, AK4961_FC3_DSPRSTN_MASK, 0 ) );
+        }
+        else
+        {
+            const ak4961_sync_domain_t *sync_domain = dac_data->source_port->sync_domain;
+            const ak4961_sync_domain_t *dsp_sync_domain = dsp_effect_data->dsp_source_port->sync_domain;
+
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, sync_domain->reg, sync_domain->mask, dac_data->sync_domain_select << sync_domain->shift ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, dsp_sync_domain->reg, dsp_sync_domain->mask, dsp_effect_data->dsp_sync_domain_select << dsp_sync_domain->shift ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, dsp->reg_dsp_src_sel, AK4961_SRC_SEL_MASK, dac_data->source_port->source_address_select ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, dac->reg_dac_src_sel, AK4961_SRC_SEL_MASK, dsp_effect_data->dsp_source_port->source_address_select ) );
+            AK4961_VERIFY( ak4961_upd_bits( ak4961, AK4961_REG_ADC_SYNC_DOMAIN_SET, AK4961_ADC_SYNC_SET_SDCDC_MASK, dac_data->sync_domain_select ) << AK4961_ADC_SYNC_SET_SDCDC_SHIFT );
+
+            /* Power-up DSP and download DSP program(PRAM and CRAM) */
+            AK4961_VERIFY ( ak4961_ram_download( ak4961, dsp_effect_data->pram_res, dsp_effect_data->pram_tab_size, dsp_effect_data->cram_res, dsp_effect_data->cram_tab_size ) );
+
+            /* Set DSP effect mode */
+            AK4961_VERIFY( ak4961_ram_write( ak4961, dsp_mode_ram, dsp_mode_ram_size ) );
+            AK4961_VERIFY( ak4961_reg_write( ak4961, AK4961_REG_CRAM_OP_RUN_STATE, AK4961_CRAM_OP_RUNC ) );
+        }
     }
 
     return WICED_SUCCESS;

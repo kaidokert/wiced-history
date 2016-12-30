@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/netdev/netdev_ioctl.c
  *
- *   Copyright (C) 2007-2012, 2015 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2012, 2015-2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,14 +57,21 @@
 #include <netinet/in.h>
 
 #include <nuttx/net/netdev.h>
+#include <nuttx/net/arp.h>
+
+#ifdef CONFIG_NET_RTS
+#include <nuttx/net/rts.h>
+#endif
 
 #ifdef CONFIG_NET_IGMP
 #  include "sys/sockio.h"
 #  include "nuttx/net/igmp.h"
 #endif
 
+#include "arp/arp.h"
 #include "socket/socket.h"
 #include "netdev/netdev.h"
+#include "devif/devif.h"
 #include "igmp/igmp.h"
 #include "icmpv6/icmpv6.h"
 #include "route/route.h"
@@ -143,35 +150,27 @@ static int ioctl_addipv4route(FAR struct rtentry *rtentry)
 #if defined(CONFIG_NET_ROUTE) && defined(CONFIG_NET_IPv6)
 static int ioctl_addipv6route(FAR struct rtentry *rtentry)
 {
-#if 1
-#  warning Missing logic
-  return -1;
-#else
-  FAR struct sockaddr_in6 *addr;
-  net_ipv6addr_t target;
-  net_ipv6addr_t netmask;
+  FAR struct sockaddr_in6 *target;
+  FAR struct sockaddr_in6 *netmask;
   net_ipv6addr_t router;
 
-  addr    = (FAR struct sockaddr_in6 *)rtentry->rt_target;
-  target  = (net_ipv6addr_t)addr->sin6_addr.u6_addr16;
-
-  addr    = (FAR struct sockaddr_in6 *)rtentry->rt_netmask;
-  netmask = (net_ipv6addr_t)addr->sin6_addr.u6_addr16;
+  target    = (FAR struct sockaddr_in6 *)rtentry->rt_target;
+  netmask    = (FAR struct sockaddr_in6 *)rtentry->rt_netmask;
 
   /* The router is an optional argument */
 
   if (rtentry->rt_router)
     {
+      FAR struct sockaddr_in6 *addr;
       addr   = (FAR struct sockaddr_in6 *)rtentry->rt_router;
-      router = (net_ipv6addr_t)addr->sin6_addr.u6_addr16;
+      net_ipv6addr_copy(router, addr->sin6_addr.s6_addr16);
     }
   else
     {
-      router = NULL;
+      net_ipv6addr_copy(router, in6addr_any.s6_addr16);
     }
 
-  return net_addroute(target, netmask, router);
-#endif
+  return net_addroute_ipv6(target->sin6_addr.s6_addr16, netmask->sin6_addr.s6_addr16, router);
 }
 #endif /* CONFIG_NET_ROUTE && CONFIG_NET_IPv6 */
 
@@ -217,22 +216,13 @@ static int ioctl_delipv4route(FAR struct rtentry *rtentry)
 #if defined(CONFIG_NET_ROUTE) && defined(CONFIG_NET_IPv6)
 static int ioctl_delipv6route(FAR struct rtentry *rtentry)
 {
-#if 1
-#  warning Missing logic
-  return -1;
-#else
-  FAR struct sockaddr_in6 *addr;
-  net_ipv6addr_t target;
-  net_ipv6addr_t netmask;
+  FAR struct sockaddr_in6 *target;
+  FAR struct sockaddr_in6 *netmask;
 
-  addr    = (FAR struct sockaddr_in6 *)rtentry->rt_target;
-  target  = (net_ipv6addr_t)addr->sin6_addr.u6_addr16;
+  target    = (FAR struct sockaddr_in6 *)rtentry->rt_target;
+  netmask    = (FAR struct sockaddr_in6 *)rtentry->rt_netmask;
 
-  addr    = (FAR struct sockaddr_in6 *)rtentry->rt_netmask;
-  netmask = (net_ipv6addr_t)addr->sin6_addr.u6_addr16;
-
-  return net_delroute(target, netmask);
-#endif
+  return net_delroute_ipv6(target->sin6_addr.s6_addr16, netmask->sin6_addr.s6_addr16);
 }
 #endif /* CONFIG_NET_ROUTE && CONFIG_NET_IPv6 */
 
@@ -406,6 +396,17 @@ static int netdev_ifrioctl(FAR struct socket *psock, int cmd,
               netdev_ifdown(dev);
               ioctl_setipv4addr(&dev->d_ipaddr, &req->ifr_addr);
               netdev_ifup(dev);
+              if ((dev->d_ipaddr != 0) && (dev->d_netmask != 0))
+#ifdef CONFIG_NET_RTS
+              {
+                struct ifa_msghdr ifa;
+                memset((void *)&ifa, 0, sizeof(ifa));
+                ifa.ifam_msglen = sizeof(ifa);
+                ifa.ifam_type = RTM_NEWADDR;
+                ifa.ifam_index = dev->d_ifindex;
+                rts_notify((uint8_t *)&ifa, sizeof(ifa), RTS_NOTIFY);
+              }           
+#endif
               ret = OK;
             }
         }
@@ -604,16 +605,15 @@ static int netdev_ifrioctl(FAR struct socket *psock, int cmd,
           dev = netdev_ifrdev(req);
           if (dev)
             {
-              if (req->ifr_flags & IFF_UP)
+              if ((req->ifr_flags & IFF_UP) != 0)
                 {
                   /* Yes.. bring the interface up */
-
                   netdev_ifup(dev);
                 }
 
               /* Is this a request to take the interface down? */
 
-              else if (req->ifr_flags & IFF_DOWN)
+              else if ((req->ifr_flags & IFF_DOWN) != 0)
                 {
                   /* Yes.. take the interface down */
 
@@ -686,16 +686,9 @@ static int netdev_ifrioctl(FAR struct socket *psock, int cmd,
       case SIOCGIFCOUNT:  /* Get number of devices */
         {
           req->ifr_count = netdev_count();
-          ret = -ENOSYS;
+          ret = OK;
         }
         break;
-
-#ifdef CONFIG_NET_ARPIOCTLS
-      case SIOCSARP:  /* Set a ARP mapping */
-      case SIOCDARP:  /* Delete an ARP mapping */
-      case SIOCGARP:  /* Get an ARP mapping */
-# error "IOCTL Commands not implemented"
-#endif
 
 #ifdef CONFIG_NETDEV_PHY_IOCTL
 #ifdef CONFIG_ARCH_PHY_INTERRUPT
@@ -725,11 +718,34 @@ static int netdev_ifrioctl(FAR struct socket *psock, int cmd,
         break;
 #endif
 
+
+      case SIOCGIFINDEX:  /* Get interface index by interface name */
+        {
+            dev = netdev_ifrdev(req);
+            if (dev)
+            {
+              req->ifr_ifindex = dev->d_ifindex;
+              return OK;
+            }
+        }
+        break;
+
+      case SIOCGIFNAME:  /* Get interface name by interface index */
+        {
+            dev = req ? netdev_findbyindex(req->ifr_ifindex) : NULL;
+            if (dev)
+            {
+              strcpy(req->ifr_name, dev->d_ifname);
+              return OK;
+            }
+        }
+        break;
+
       default:
         {
           ret = -ENOTTY;
         }
-        break;;
+        break;
     }
 
   return ret;
@@ -769,12 +785,12 @@ static FAR struct net_driver_s *netdev_imsfdev(FAR struct ip_msfilter *imsf)
  * Name: netdev_ifconfioctl
  *
  * Description:
- *   Perform network device configuration operations.
+ *   Perform network device specific operations.
  *
  * Parameters:
  *   psock    Socket structure
-  *    cmd    The ioctl command
- *  ifconf    The argument of the ioctl cmd
+ *     cmd    The ioctl command
+ *   ifconf   The argument of the ioctl cmd
  *
  * Return:
  *   >=0 on success (positive non-zero values are cmd-specific)
@@ -823,7 +839,7 @@ static int netdev_ifconfioctl(FAR struct socket *psock, int cmd,
           net_unlock(save);
           ifc->ifc_len = total;
         }
-        break;
+      break;
 
       default:
         ret = -ENOTTY;
@@ -883,6 +899,129 @@ static int netdev_imsfioctl(FAR struct socket *psock, int cmd,
         break;
 
       case SIOCGIPMSFILTER:  /* Retrieve source filter addresses */
+      default:
+        ret = -ENOTTY;
+        break;
+    }
+
+  return ret;
+}
+#endif
+
+/****************************************************************************
+ * Name: netdev_arpioctl
+ *
+ * Description:
+ *   Perform ARP table specific operations.
+ *
+ * Parameters:
+ *   psock  Socket structure
+ *   dev    Ethernet driver device structure
+ *   cmd    The ioctl command
+ *   req    The argument of the ioctl cmd
+ *
+ * Return:
+ *   >=0 on success (positive non-zero values are cmd-specific)
+ *   Negated errno returned on failure.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_ARP
+static int netdev_arpioctl(FAR struct socket *psock, int cmd,
+                           FAR struct arpreq *req)
+{
+  int ret;
+
+  /* Execute the command */
+
+  switch (cmd)
+    {
+      case SIOCSARP:  /* Set an ARP mapping */
+        {
+          if (req != NULL &&
+              req->arp_pa.sa_family == AF_INET && 
+              req->arp_ha.sa_family == ARPHRD_ETHER)
+            {
+              FAR struct sockaddr_in *addr =
+                (FAR struct sockaddr_in *)&req->arp_pa;
+
+              /* Update any existing ARP table entry for this protocol
+               * address -OR- add a new ARP table entry if there is not.
+               */
+
+              ret = arp_update(addr->sin_addr.s_addr,
+                               (FAR uint8_t *)req->arp_ha.sa_data);
+            }
+          else
+            {
+              ret = -EINVAL;
+            }
+        }
+        break;
+
+      case SIOCDARP:  /* Delete an ARP mapping */
+        {
+          if (req != NULL && req->arp_pa.sa_family == AF_INET)
+            {
+              FAR struct sockaddr_in *addr =
+                (FAR struct sockaddr_in *)&req->arp_pa;
+
+              /* Find the existing ARP table entry for this protocol address. */
+
+              FAR struct arp_entry *entry = arp_find(addr->sin_addr.s_addr);
+              if (entry != NULL)
+                {
+                  /* The ARP table is fixed size; an entry is deleted
+                   * by nullifying its protocol address.
+                   */
+
+                  entry->at_ipaddr = 0;
+                  ret = OK;
+                }
+              else
+                {
+                  ret = -ENOENT;
+                }
+            }
+          else
+            {
+              ret = -EINVAL;
+            }
+        }
+        break;
+
+      case SIOCGARP:  /* Get an ARP mapping */
+        {
+          if (req != NULL && req->arp_pa.sa_family == AF_INET)
+            {
+              FAR struct sockaddr_in *addr =
+                (FAR struct sockaddr_in *)&req->arp_pa;
+
+              /* Find the existing ARP table entry for this protocol address. */
+
+              FAR struct arp_entry *entry = arp_find(addr->sin_addr.s_addr);
+              if (entry != NULL)
+                {
+                  /* Return the mapped hardware address. */
+
+                  req->arp_ha.sa_family = ARPHRD_ETHER;
+                  memcpy(req->arp_ha.sa_data,
+                         entry->at_ethaddr.ether_addr_octet,
+                         ETHER_ADDR_LEN);
+                  ret = OK;
+                }
+              else
+                {
+                  ret = -ENOENT;
+                }
+            }
+          else
+            {
+              ret = -EINVAL;
+            }
+        }
+        break;
+
       default:
         ret = -ENOTTY;
         break;
@@ -1057,13 +1196,26 @@ int netdev_ioctl(int sockfd, int cmd, unsigned long arg)
     }
 
 #ifdef CONFIG_NET_IGMP
+  /* Check for address filtering commands */
+
   if (ret == -ENOTTY)
     {
-
       ret = netdev_imsfioctl(psock, cmd, (FAR struct ip_msfilter*)((uintptr_t)arg));
     }
 #endif
+
+#ifdef CONFIG_NET_ARP
+  /* Check for ARP table IOCTL commands */
+
+  if (ret == -ENOTTY)
+    {
+      ret = netdev_arpioctl(psock, cmd, (FAR struct arpreq *)((uintptr_t)arg));
+    }
+#endif
+
 #ifdef CONFIG_NET_ROUTE
+  /* Check for Routing table IOCTL commands */
+
   if (ret == -ENOTTY)
     {
       ret = netdev_rtioctl(psock, cmd, (FAR struct rtentry*)((uintptr_t)arg));
@@ -1080,7 +1232,7 @@ int netdev_ioctl(int sockfd, int cmd, unsigned long arg)
 /* On failure, set the errno and return -1 */
 
 errout:
-  errno = -ret;
+  set_errno(-ret);
   return ERROR;
 }
 
@@ -1116,7 +1268,7 @@ void netdev_ifup(FAR struct net_driver_s *dev)
 
 void netdev_ifdown(FAR struct net_driver_s *dev)
 {
-  /* Make sure that the device supports the d_ifdown() method */
+  /* Check sure that the device supports the d_ifdown() method */
 
   if (dev->d_ifdown)
     {
@@ -1133,6 +1285,10 @@ void netdev_ifdown(FAR struct net_driver_s *dev)
               dev->d_flags &= ~IFF_UP;
             }
         }
+
+      /* Notify clients that the network has been taken down */
+
+      (void)devif_dev_event(dev, NULL, NETDEV_DOWN);
     }
 }
 

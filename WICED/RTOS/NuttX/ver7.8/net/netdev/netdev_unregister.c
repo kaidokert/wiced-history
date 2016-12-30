@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/netdev/netdev_unregister.c
  *
- *   Copyright (C) 2011 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2011, 2015 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,6 +52,7 @@
 #include <net/ethernet.h>
 #include <nuttx/net/netdev.h>
 
+#include "utils/utils.h"
 #include "netdev/netdev.h"
 #include "igmp/igmp.h"
 
@@ -64,22 +65,6 @@
 #else
 #  define NETDEV_FORMAT "eth%d"
 #endif
-
-/****************************************************************************
- * Priviate Types
- ****************************************************************************/
-
-/****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
- * Public Data
- ****************************************************************************/
-
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
 
 /****************************************************************************
  * Public Functions
@@ -107,10 +92,11 @@ int netdev_unregister(FAR struct net_driver_s *dev)
 {
   struct net_driver_s *prev;
   struct net_driver_s *curr;
+  net_lock_t save;
 
   if (dev)
     {
-      netdev_semtake();
+      save = net_lock();
 
       /* Cancel IGMP configuration */
 
@@ -146,7 +132,7 @@ int netdev_unregister(FAR struct net_driver_s *dev)
           curr->flink = NULL;
         }
 
-      netdev_semgive();
+      net_unlock(save);
 
 #ifdef CONFIG_NET_ETHERNET
       nlldbg("Unregistered MAC: %02x:%02x:%02x:%02x:%02x:%02x as dev: %s\n",

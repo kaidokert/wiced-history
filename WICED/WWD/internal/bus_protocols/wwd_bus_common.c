@@ -1,17 +1,39 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
  *
  */
-
 
 #include <string.h>
 #include "wwd_debug.h"
@@ -23,15 +45,14 @@
 #include "../wwd_internal.h"   /* TODO: fix include dependency */
 #include "chip_constants.h"
 #include "platform_toolchain.h"
+#include "wwd_structures.h"
+#include "platform_isr.h"
+#include "wwd_rtos_interface.h"
+#include "platform_mcu_peripheral.h"
 
-#define INDIRECT_BUFFER_SIZE                    ( 1024 )
-#define WWD_BUS_ROUND_UP_ALIGNMENT              ( 64 )
-#ifdef WWD_DIRECT_RESOURCES
-#define WWD_BUS_MAX_TRANSFER_SIZE               ( 16 * 1024 )
-#else /* ifdef WWD_DIRECT_RESOURCES */
-#define WWD_BUS_MAX_TRANSFER_SIZE               ( WWD_BUS_MAX_BACKPLANE_TRANSFER_SIZE )
-#endif /* ifdef WWD_DIRECT_RESOURCES */
-
+/******************************************************
+ *                      Macros
+ ******************************************************/
 #define VERIFY_RESULT( x ) \
     { \
         wwd_result_t verify_result; \
@@ -43,10 +64,133 @@
         } \
     }
 
+#ifndef WICED_SAVE_INTERRUPTS
+#define WICED_SAVE_INTERRUPTS( flags ) do { UNUSED_PARAMETER( flags ); } while ( 0 );
+#define WICED_RESTORE_INTERRUPTS( flags ) do { } while ( 0 );
+#endif /* WICED_SAVE_INTERRUPTS */
+
+
+/******************************************************
+ *             Constants
+ ******************************************************/
+#define INDIRECT_BUFFER_SIZE                    ( 1024 )
+#define WWD_BUS_ROUND_UP_ALIGNMENT              ( 64 )
+#ifdef WWD_DIRECT_RESOURCES
+#define WWD_BUS_MAX_TRANSFER_SIZE               ( 16 * 1024 )
+#else /* ifdef WWD_DIRECT_RESOURCES */
+#define WWD_BUS_MAX_TRANSFER_SIZE               ( WWD_BUS_MAX_BACKPLANE_TRANSFER_SIZE )
+#endif /* ifdef WWD_DIRECT_RESOURCES */
+
+#define WWD_BUS_WLAN_ALLOW_SLEEP_INVALID_MS  ((uint32_t)-1)
+
+/******************************************************
+ *             Structures
+ ******************************************************/
+
+/******************************************************
+ *             Variables
+ ******************************************************/
+#if PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
+static wwd_time_t delayed_bus_release_deadline                          = 0;
+static wiced_bool_t delayed_bus_release_scheduled                       = WICED_FALSE;
+static uint32_t delayed_bus_release_timeout_ms                          = PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS;
+static volatile uint32_t delayed_bus_release_timeout_ms_request         = WWD_BUS_WLAN_ALLOW_SLEEP_INVALID_MS;
+#endif /* PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS */
 static uint32_t                 backplane_window_current_base_address   = 0;
 static volatile wiced_bool_t    resource_download_abort                 = WICED_FALSE;
 
+/******************************************************
+ *             Function declarations
+ ******************************************************/
 static wwd_result_t download_resource( wwd_resource_t resource, uint32_t address );
+
+/******************************************************
+ *             Function definitions
+ ******************************************************/
+void wwd_bus_wlan_set_delayed_bus_powersave_milliseconds( uint32_t time_ms )
+{
+#if PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
+
+    delayed_bus_release_timeout_ms_request = time_ms;
+    wwd_thread_notify( );
+
+#else
+
+    UNUSED_PARAMETER( time_ms );
+
+#endif /* PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS */
+}
+
+#if PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
+void wwd_delayed_bus_release_schedule_update( wiced_bool_t is_scheduled )
+{
+    delayed_bus_release_scheduled = is_scheduled;
+    delayed_bus_release_deadline = 0;
+}
+#endif /* PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS */
+
+uint32_t wwd_bus_handle_delayed_release( void )
+{
+    uint32_t time_until_release = 0;
+
+#if PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS
+    if ( delayed_bus_release_timeout_ms_request != WWD_BUS_WLAN_ALLOW_SLEEP_INVALID_MS )
+    {
+        wiced_bool_t schedule = ( ( delayed_bus_release_scheduled != 0 ) || ( delayed_bus_release_deadline != 0 ) ) ? WICED_TRUE : WICED_FALSE;
+        uint32_t     flags;
+
+        WICED_SAVE_INTERRUPTS( flags );
+        delayed_bus_release_timeout_ms         = delayed_bus_release_timeout_ms_request;
+        delayed_bus_release_timeout_ms_request = WWD_BUS_WLAN_ALLOW_SLEEP_INVALID_MS;
+        WICED_RESTORE_INTERRUPTS( flags );
+
+        DELAYED_BUS_RELEASE_SCHEDULE( schedule );
+    }
+
+    if ( delayed_bus_release_scheduled == WICED_TRUE )
+    {
+        delayed_bus_release_scheduled = WICED_FALSE;
+
+        if ( delayed_bus_release_timeout_ms != 0 )
+        {
+            delayed_bus_release_deadline = host_rtos_get_time() + delayed_bus_release_timeout_ms;
+            time_until_release = delayed_bus_release_timeout_ms;
+        }
+    }
+    else if ( delayed_bus_release_deadline != 0 )
+    {
+        wwd_time_t now = host_rtos_get_time( );
+
+        if ( delayed_bus_release_deadline - now <= delayed_bus_release_timeout_ms )
+        {
+            time_until_release = delayed_bus_release_deadline - now;
+        }
+
+        if ( time_until_release == 0 )
+        {
+            delayed_bus_release_deadline = 0;
+        }
+    }
+
+    if ( time_until_release != 0 )
+    {
+        if ( wwd_bus_is_up( ) == WICED_FALSE )
+        {
+            time_until_release = 0;
+        }
+        else if ( wwd_bus_platform_mcu_power_save_deep_sleep_enabled( ) )
+        {
+            time_until_release = 0;
+        }
+    }
+#endif /* PLATFORM_WLAN_ALLOW_BUS_TO_SLEEP_DELAY_MS */
+    return time_until_release;
+}
+
+WEAK wiced_bool_t wwd_bus_platform_mcu_power_save_deep_sleep_enabled( void )
+{
+    return WICED_FALSE;
+}
 
 void wwd_bus_init_backplane_window( void )
 {
@@ -103,6 +247,7 @@ static wwd_result_t download_resource( wwd_resource_t resource, uint32_t address
     const uint8_t* image;
 
     uint32_t image_size;
+
     host_platform_resource_size( resource, &image_size );
 
     result = host_platform_resource_size( resource, &image_size );
@@ -125,7 +270,7 @@ static wwd_result_t download_resource( wwd_resource_t resource, uint32_t address
     {
         if ( resource_download_abort == WICED_TRUE )
         {
-            WPRINT_WWD_ERROR(("Download_resource is aborted; terminating after %d iterations\n", transfer_progress));
+            WPRINT_WWD_INFO(("Download_resource is aborted; terminating after %d iterations\n", transfer_progress));
             return WWD_UNFINISHED;
         }
 
@@ -143,22 +288,6 @@ static wwd_result_t download_resource( wwd_resource_t resource, uint32_t address
         {
             return result;
         }
-#if 0
-        {
-            /* TODO: THIS VERIFY CODE IS CURRENTLY BROKEN - ONLY CHECKS 64 BYTES, NOT 16KB */
-            /* Verify download of image data */
-            uint8_t tmpbuff[64];
-            if ( WWD_SUCCESS != ( result = wwd_bus_transfer_bytes( BUS_READ, BACKPLANE_FUNCTION, address & BACKPLANE_ADDRESS_MASK, 64, (wwd_transfer_bytes_packet_t*)tmpbuff ) ) )
-            {
-                return result;
-            }
-            if ( 0 != memcmp( tmpbuff, image, (size_t) 64 ) )
-            {
-                /* Verify failed */
-                WPRINT_WWD_ERROR(("Verify of firmware/NVRAM image failed"));
-            }
-        }
-#endif /* if 0 */
     }
     return WWD_SUCCESS;
 }
@@ -170,20 +299,21 @@ static wwd_result_t download_resource( wwd_resource_t resource, uint32_t address
     uint32_t transfer_progress;
 
     uint32_t size;
-    wwd_result_t result;
+    wwd_result_t result = WWD_SUCCESS;
 
     result = host_platform_resource_size( resource, &size );
 
     if( result != WWD_SUCCESS )
     {
         WPRINT_WWD_ERROR(("Fatal error: download_resource doesn't exist\n"));
-        return result;
+        goto exit;
     }
 
     if ( size <= 0 )
     {
         WPRINT_WWD_ERROR(("Fatal error: download_resource cannot load with invalid size\n"));
-        return WWD_BADARG;
+        result = WWD_BADARG;
+        goto exit;
     }
 
     /* Transfer firmware image into the RAM */
@@ -205,7 +335,7 @@ static wwd_result_t download_resource( wwd_resource_t resource, uint32_t address
         if ( result != WWD_SUCCESS )
         {
             WPRINT_WWD_ERROR(("Fatal error: download_resource cannot allocate buffer\n"));
-            return result;
+            goto exit;
         }
         packet = (uint8_t*) host_buffer_get_current_piece_data_pointer( buffer );
 
@@ -216,26 +346,30 @@ static wwd_result_t download_resource( wwd_resource_t resource, uint32_t address
             if ( resource_download_abort == WICED_TRUE )
             {
                 WPRINT_WWD_ERROR(("Download_resource is aborted; terminating after %lu iterations\n", transfer_progress));
-                return WWD_UNFINISHED;
+                host_buffer_release( buffer, WWD_NETWORK_TX );
+                result = WWD_UNFINISHED;
+                goto exit;
             }
             transfer_size = (uint16_t) MIN( WWD_BUS_MAX_TRANSFER_SIZE, segment_size );
             result = wwd_bus_set_backplane_window( address );
+
             if ( result != WWD_SUCCESS )
             {
                 host_buffer_release( buffer, WWD_NETWORK_TX );
-                return result;
+                goto exit;
             }
             result = wwd_bus_transfer_bytes( BUS_WRITE, BACKPLANE_FUNCTION, ( address & BACKPLANE_ADDRESS_MASK ), transfer_size, (wwd_transfer_bytes_packet_t*) ( packet + sizeof(wwd_buffer_queue_ptr_t)) );
             if ( result != WWD_SUCCESS )
             {
                 host_buffer_release( buffer, WWD_NETWORK_TX );
-                return result;
+                goto exit;
             }
         }
 
         host_buffer_release( buffer, WWD_NETWORK_TX );
     }
-    return WWD_SUCCESS;
+exit:
+    return result;
 }
 
 #endif /* if defined( WWD_DIRECT_RESOURCES ) */
@@ -352,3 +486,17 @@ done:
     }
     return result;
 }
+
+WEAK void wwd_bus_init_stats( void )
+{
+    /* To be implemented */
+}
+
+WEAK wwd_result_t wwd_bus_print_stats( wiced_bool_t reset_after_print )
+{
+    /* To be implemented */
+    UNUSED_VARIABLE( reset_after_print );
+    WPRINT_MACRO(( "Bus stats not available\n" ));
+    return WWD_SUCCESS;
+}
+

@@ -65,10 +65,6 @@
 #define IGMPBUF ((struct igmp_iphdr_s *)&dev->d_buf[NET_LL_HDRLEN(dev)])
 
 /****************************************************************************
- * Private Functions
- ****************************************************************************/
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
 
@@ -121,20 +117,20 @@ void igmp_input(struct net_driver_s *dev)
   in_addr_t grpaddr;
   unsigned int ticks;
 
-  nllvdbg("IGMP message: %04x%04x\n", IGMPBUF->destipaddr[1], IGMPBUF->destipaddr[0]);
+  nllvdbg("IGMP message: %04x%04x-%04x%04x\n", IGMPBUF->destipaddr[1], IGMPBUF->destipaddr[0], IGMPBUF->srcipaddr[1], IGMPBUF->srcipaddr[0]);
 
   /* Verify the message length */
-
-  if (dev->d_len < NET_LL_HDRLEN(dev) + IPIGMP_HDRLEN)
+  /* not count the 4 bytes optional field */
+  if (dev->d_len < (IPIGMP_HDRLEN - 4))
     {
       IGMP_STATINCR(g_netstats.igmp.length_errors);
-      nlldbg("Length error\n");
+      nlldbg("Length error - len=%d\n", dev->d_len);
       return;
     }
 
   /* Calculate and check the IGMP checksum */
 
-  if (net_chksum((uint16_t*)&IGMPBUF->type, IGMP_HDRLEN) != 0)
+  if (net_chksum((FAR uint16_t *)&IGMPBUF->type, IGMP_HDRLEN - 4) != 0)
     {
       IGMP_STATINCR(g_netstats.igmp.chksum_errors);
       nlldbg("Checksum error\n");

@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -146,24 +169,24 @@ typedef struct
  * @note : this function must be used in pairs with wiced_dct_read_unlock to
  *         ensure that any allocated memory is freed.
  *
- * @param info_ptr [out] : a pointer to the pointer that will be filled on return
- * @param ptr_is_writable [in] : if true then then the returned pointer will be in RAM
- *                          allowing it to be modified. e.g. before being written
- * @param section [in] : the section of the DCT which should be read
- * @param offset [in] : the offset in bytes within the section
- * @param size [in] : the length of data that should be read
+ * @param info_ptr [out]       : A pointer to the pointer that will be filled on return
+ * @param ptr_is_writable [in] : If true then then the returned pointer will be in RAM
+ *                               allowing it to be modified. e.g. before being written
+ * @param section [in]         : The section of the DCT which should be read
+ * @param offset [in]          : The offset in bytes within the section
+ * @param size [in]            : The length of data that should be read
  *
  * @return    Wiced Result
  */
-extern wiced_result_t wiced_dct_read_lock(   void** info_ptr, wiced_bool_t ptr_is_writable, dct_section_t section, uint32_t offset, uint32_t size );
+extern wiced_result_t wiced_dct_read_lock( void** info_ptr, wiced_bool_t ptr_is_writable, dct_section_t section, uint32_t offset, uint32_t size );
 
 
 /** Frees any space allocated in wiced_dct_read_lock()
  *
  * @note : this function must be used in pairs with wiced_dct_read_lock
  *
- * @param info_ptr [in] : a pointer that was created with wiced_dct_read_lock()
- * @param ptr_is_writable[in] : indicates whether the pointer was retrevied as a writable pointer
+ * @param info_ptr [in]       : A pointer that was created with wiced_dct_read_lock()
+ * @param ptr_is_writable[in] : Indicates whether the pointer was retrevied as a writable pointer
  *
  * @return    Wiced Result
  */
@@ -177,16 +200,30 @@ extern wiced_result_t wiced_dct_read_unlock( void* info_ptr, wiced_bool_t ptr_is
  * @note : Ensure that this function is only called occasionally, otherwise
  *         the flash memory wear may result.
  *
- * @param info_ptr [in] : a pointer to the pointer that will be filled on return
- * @param section [in]: the section of the DCT which should be read
- * @param offset [in]: the offset in bytes within the section
- * @param size [in] : the length of data that should be written
+ * @param info_ptr [in] : A pointer to the pointer that will be filled on return
+ * @param section [in]  : The section of the DCT which should be read
+ * @param offset [in]   : The offset in bytes within the section
+ * @param size [in]     : The length of data that should be written
  *
  * @return    Wiced Result
  */
 wiced_result_t wiced_dct_write( const void* info_ptr, dct_section_t section, uint32_t offset, uint32_t size );
 
+/** Write the boot_details structure to the DCT.
+ *
+ * @param new_boot_details [in] : A pointer to the new boot_detail structure to be written.
+ *
+ * @return    Wiced Result
+ */
 wiced_result_t wiced_dct_write_boot_details( const boot_detail_t* new_boot_details );
+
+/** Write the app location to the DCT.
+ *
+ * @param new_app_location_info [in] : A pointer to the new image location structure to be written.
+ * @param dct_app_index [in]         : Application index to write.
+ *
+ * @return    Wiced Result
+ */
 wiced_result_t wiced_dct_write_app_location( image_location_t* new_app_location_info, uint32_t dct_app_index );
 
 /** @} */
@@ -231,7 +268,7 @@ static inline wiced_result_t wiced_framework_set_boot( uint8_t app_id, char load
  */
 static inline void wiced_framework_reboot( void );
 
-/** Initialize the applicatin for modification.
+/** Initialize the application for modification.
  *
  * Unlock the application for later modification.
  *
@@ -244,7 +281,7 @@ static inline void wiced_framework_reboot( void );
  */
 static inline wiced_result_t wiced_framework_app_open( uint8_t app_id, wiced_app_t* app );
 
-/** Finilaize application modification.
+/** Finalize application modification.
  *
  * Lock the application (flush any cached operations).
  *
@@ -252,7 +289,7 @@ static inline wiced_result_t wiced_framework_app_open( uint8_t app_id, wiced_app
  *
  * @param[in] app   : Application handler.
  *
- * @return Wiced reuslt code
+ * @return Wiced result code
  */
 static inline wiced_result_t wiced_framework_app_close( wiced_app_t* app );
 
@@ -264,7 +301,7 @@ static inline wiced_result_t wiced_framework_app_close( wiced_app_t* app );
  *
  * @param[inout] app   : Application handler.
  *
- * @return Wiced reuslt code
+ * @return Wiced result code
  */
 static inline wiced_result_t wiced_framework_app_erase( wiced_app_t* app );
 
@@ -278,15 +315,12 @@ static inline wiced_result_t wiced_framework_app_erase( wiced_app_t* app );
  *          on the go, writing to the file must be sequential with no gaps.
  *
  * @param[inout] app : Application handler.
- * @param[in] offset : The offset from the start of the application in bytes
  * @param[in] data   : The data to be written
  * @param[in] size   : The number of bytes to be written
- * @param[in/out] last_erased_sector : Holds the last erased sector.
  *
- *
- *  @return Wiced reuslt code
+ *  @return Wiced result code
  */
-static inline wiced_result_t  wiced_framework_app_write_chunk( wiced_app_t* app, const uint8_t* data, uint32_t size );
+static inline wiced_result_t wiced_framework_app_write_chunk( wiced_app_t* app, const uint8_t* data, uint32_t size );
 
 /** Reads a piece of the application from external flash
  *
@@ -297,9 +331,9 @@ static inline wiced_result_t  wiced_framework_app_write_chunk( wiced_app_t* app,
  * @param[in] data   : The buffer for the data to be read
  * @param[in] size   : The number of bytes to be read
  *
- *  @return Wiced reuslt code
+ *  @return Wiced result code
  */
-static inline wiced_result_t  wiced_framework_app_read_chunk( wiced_app_t* app, uint32_t offset, uint8_t* data, uint32_t size );
+static inline wiced_result_t wiced_framework_app_read_chunk( wiced_app_t* app, uint32_t offset, uint8_t* data, uint32_t size );
 
 /** Returns the current size of the application.
  *
@@ -311,9 +345,9 @@ static inline wiced_result_t  wiced_framework_app_read_chunk( wiced_app_t* app, 
  * @param[inout] app : Application handler.
  * @param[out] size  : The size allocated to the application in bytes.
  *
- *  @return Wiced reuslt code
+ *  @return Wiced result code
  */
-static inline wiced_result_t  wiced_framework_app_get_size( wiced_app_t* app, uint32_t* size );
+static inline wiced_result_t wiced_framework_app_get_size( wiced_app_t* app, uint32_t* size );
 
 /** Sets the current size of the application.
  *
@@ -327,9 +361,9 @@ static inline wiced_result_t  wiced_framework_app_get_size( wiced_app_t* app, ui
  * @param[inout] app : Application handler.
  * @param[in] size   : The new size allocated to the application in bytes.
  *
- *  @return Wiced reuslt code
+ *  @return Wiced result code
  */
-static inline wiced_result_t  wiced_framework_app_set_size( wiced_app_t* app, uint32_t size );
+static inline wiced_result_t wiced_framework_app_set_size( wiced_app_t* app, uint32_t size );
 
 /** @} */
 
@@ -367,134 +401,6 @@ extern wiced_result_t wiced_update_system_monitor(wiced_system_monitor_t* system
  * @return @ref wiced_result_t
  */
 extern wiced_result_t wiced_wakeup_system_monitor_thread(void);
-
-/** @} */
-
-/*****************************************************************************/
-/** @addtogroup deprecated_dct       Deprecated DCT functions
- *  @ingroup dct
- *
- * Device Configuration Table (Non-volatile flash storage space)
- *
- *
- *  @{
- */
-/*****************************************************************************/
-
-#ifndef EXTERNAL_DCT
-
-/** Retrieves a pointer to the application section of the current DCT
- *
- * @deprecated Please use @wiced_dct_read_app_section instead.
- *             Function is not compatible with a DCT located in external flash, and will
- *             be removed in future SDK versions
- *
- * @return    The app section pointer
- */
-extern void const* DEPRECATE( wiced_dct_get_app_section( void ) );
-
-
-/** Retrieves a pointer to the manufacturing info section of the current DCT
- *
- * @deprecated Please use @wiced_dct_get_mfg_info instead.
- *             Function is not compatible with a DCT located in external flash, and will
- *             be removed in future SDK versions
- *
- * @return    The manufacturing section pointer
- */
-extern platform_dct_mfg_info_t const* DEPRECATE( wiced_dct_get_mfg_info_section( void ) );
-
-
-/** Retrieves a pointer to the security section of the current DCT
- *
- * @deprecated Please use @wiced_dct_get_security_section instead.
- *             Function is not compatible with a DCT located in external flash, and will
- *             be removed in future SDK versions
- *
- * @return    The security section pointer
- */
-extern platform_dct_security_t const* DEPRECATE( wiced_dct_get_security_section( void ) );
-
-
-/** Retrieves a pointer to the Wi-Fi config info section of the current DCT
- *
- * @deprecated Please use @wiced_dct_get_wifi_config instead.
- *             Function is not compatible with a DCT located in external flash, and will
- *             be removed in future SDK versions
- *
- * @return    The Wi-Fi section pointer
- */
-extern platform_dct_wifi_config_t const* DEPRECATE( wiced_dct_get_wifi_config_section( void ) );
-
-/*------------------------------------- */
-
-/** Reads a volatile copy of the DCT security section from flash into a block of RAM
- *
- * @param[out] security_dct : A pointer to the RAM that will receive a copy of the DCT security section
- *
- * @return @ref wiced_result_t
- */
-extern wiced_result_t DEPRECATE( wiced_dct_read_security_section( platform_dct_security_t* security_dct ) );
-
-
-/** Writes a volatile copy of the DCT security section in RAM to the flash
- *
- * @warning: To avoid flash wear, this function should only be used for settings which are changed rarely
- *
- * @param[in] security_dct : A pointer to the volatile copy of the DCT security section in RAM
- *
- * @return @ref wiced_result_t
- */
-extern wiced_result_t DEPRECATE( wiced_dct_write_security_section( const platform_dct_security_t* security_dct ) );
-
-/*------------------------------------- */
-
-/** Reads a volatile copy of the DCT wifi config section from flash into a block of RAM
- *
- * @param[out] wifi_config_dct : A pointer to the RAM that will receive a copy of the DCT wifi config section
- *
- * @return @ref wiced_result_t
- */
-extern wiced_result_t DEPRECATE( wiced_dct_read_wifi_config_section( platform_dct_wifi_config_t* wifi_config_dct ) );
-
-
-/** Writes a volatile copy of the DCT Wi-Fi config section in RAM to the flash
- *
- * @warning: To avoid flash wear, this function should only be used for settings which are changed rarely
- *
- * @param[in] wifi_config_dct : A pointer to the volatile copy of DCT Wi-Fi config section in RAM
- *
- * @return @ref wiced_result_t
- */
-extern wiced_result_t DEPRECATE( wiced_dct_write_wifi_config_section( const platform_dct_wifi_config_t* wifi_config_dct ) );
-
-/*------------------------------------- */
-
-/** Reads a volatile copy of the DCT app section from flash into a block of RAM
- *
- * @param[out] app_dct : A pointer to the RAM that will receive a copy of the DCT app section
- * @param[in]  size    : The size of the DCT app section
- *
- * @return @ref wiced_result_t
- */
-extern wiced_result_t DEPRECATE( wiced_dct_read_app_section( void* app_dct, uint32_t size ) );
-
-
-/** Writes a volatile copy of the DCT app section in RAM to the flash
- *
- * @note: To avoid wearing out the flash, this function should only be
- *        used for settings which are changed rarely.
- *
- * @param[in] size    : The size of the DCT app section
- * @param[in] app_dct : A pointer to the volatile copy of DCT app section in RAM
- *
- * @return @ref wiced_result_t
- */
-extern wiced_result_t DEPRECATE( wiced_dct_write_app_section( const void* app_dct, uint32_t size ) );
-
-/*------------------------------------- */
-
-#endif /* ifndef EXTERNAL_DCT */
 
 /** @} */
 

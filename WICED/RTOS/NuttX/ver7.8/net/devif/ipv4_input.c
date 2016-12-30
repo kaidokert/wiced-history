@@ -85,6 +85,7 @@
 #include <debug.h>
 #include <string.h>
 
+#include <netinet/in.h>
 #include <net/if.h>
 
 #include <nuttx/net/netconfig.h>
@@ -129,7 +130,9 @@ static uint8_t g_reassembly_buffer[TCP_REASS_BUFSIZE];
 static uint8_t g_reassembly_bitmap[TCP_REASS_BUFSIZE / (8 * 8)];
 
 static const uint8_t g_bitmap_bits[8] =
-  {0xff, 0x7f, 0x3f, 0x1f, 0x0f, 0x07, 0x03, 0x01};
+{
+  0xff, 0x7f, 0x3f, 0x1f, 0x0f, 0x07, 0x03, 0x01
+};
 
 static uint16_t g_reassembly_len;
 static uint8_t g_reassembly_flags;
@@ -208,7 +211,8 @@ static uint8_t devif_reassembly(void)
         /* If the two endpoints are in the same byte, we only update that byte. */
 
         g_reassembly_bitmap[offset / (8 * 8)] |=
-          g_bitmap_bits[(offset / 8 ) & 7] & ~g_bitmap_bits[((offset + len) / 8 ) & 7];
+            g_bitmap_bits[(offset / 8) & 7] &
+              ~g_bitmap_bits[((offset + len) / 8) & 7];
 
       }
     else
@@ -217,7 +221,9 @@ static uint8_t devif_reassembly(void)
          * in the endpoints and fill the stuff inbetween with 0xff.
          */
 
-        g_reassembly_bitmap[offset / (8 * 8)] |= g_bitmap_bits[(offset / 8 ) & 7];
+          g_reassembly_bitmap[offset / (8 * 8)] |=
+            g_bitmap_bits[(offset / 8) & 7];
+
         for (i = 1 + offset / (8 * 8); i < (offset + len) / (8 * 8); ++i)
           {
             g_reassembly_bitmap[i] = 0xff;
@@ -262,7 +268,8 @@ static uint8_t devif_reassembly(void)
          * right amount of bits.
          */
 
-        if (g_reassembly_bitmap[g_reassembly_len / (8 * 8)] != (uint8_t)~g_bitmap_bits[g_reassembly_len / 8 & 7])
+          if (g_reassembly_bitmap[g_reassembly_len / (8 * 8)] !=
+              (uint8_t)~g_bitmap_bits[g_reassembly_len / 8 & 7])
           {
             goto nullreturn;
           }
@@ -377,48 +384,29 @@ int ipv4_input(FAR struct net_driver_s *dev)
 #endif /* CONFIG_NET_TCP_REASSEMBLY */
     }
 
+#if defined(CONFIG_NET_BROADCAST) && defined(CONFIG_NET_UDP)
    /* If IP broadcast support is configured, we check for a broadcast
     * UDP packet, which may be destined to us (even if there is no IP
     * address yet assigned to the device as is the case when we are
     * negotiating over DHCP for an address).
     */
 
-#if defined(CONFIG_NET_BROADCAST) && defined(CONFIG_NET_UDP)
   if (pbuf->proto == IP_PROTO_UDP &&
       net_ipv4addr_cmp(net_ip4addr_conv32(pbuf->destipaddr),
-                       g_ipv4_alloneaddr))
+                       INADDR_BROADCAST))
     {
       return udp_ipv4_input(dev);
     }
 
-  /* In most other cases, the device must be assigned a non-zero IP
-   * address.  Another exception is when CONFIG_NET_PINGADDRCONF is
-   * enabled...
-   */
+  /* In other cases, the device must be assigned a non-zero IP address. */
 
   else
 #endif
 #ifdef CONFIG_NET_ICMP
-  if (net_ipv4addr_cmp(dev->d_ipaddr, g_ipv4_allzeroaddr))
+  if (net_ipv4addr_cmp(dev->d_ipaddr, INADDR_ANY))
     {
-      /* If we are configured to use ping IP address configuration and
-       * hasn't been assigned an IP address yet, we accept all ICMP
-       * packets.
-       */
-
-#ifdef CONFIG_NET_PINGADDRCONF
-      if (pbuf->proto == IP_PROTO_ICMP)
-        {
-          nlldbg("Possible ping config packet received\n");
-          icmp_input(dev);
-          goto drop;
-        }
-      else
-#endif
-        {
-          nlldbg("No IP address assigned\n");
-          goto drop;
-        }
+      nlldbg("No IP address assigned\n");
+      goto drop;
     }
 
   /* Check if the packet is destined for out IP address */
@@ -476,17 +464,17 @@ int ipv4_input(FAR struct net_driver_s *dev)
         break;
 #endif
 
+#ifdef CONFIG_NET_ICMP
   /* Check for ICMP input */
 
-#ifdef CONFIG_NET_ICMP
       case IP_PROTO_ICMP:  /* ICMP input */
         icmp_input(dev);
         break;
 #endif
 
+#ifdef CONFIG_NET_IGMP
   /* Check for IGMP input */
 
-#ifdef CONFIG_NET_IGMP
       case IP_PROTO_IGMP:  /* IGMP input */
         igmp_input(dev);
         break;

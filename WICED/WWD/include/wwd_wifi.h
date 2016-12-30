@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -186,6 +209,12 @@ extern wwd_result_t wwd_wifi_scan( wiced_scan_type_t                            
  */
 extern wwd_result_t wwd_wifi_abort_scan( void );
 
+/** Enable or disable scan suppression; a state that disallows all Wi-Fi scans
+ *
+ * @return    WICED_SUCCESS or WICED_ERROR
+ */
+wwd_result_t wwd_wifi_set_scan_suppress( wiced_bool_t enable_suppression );
+
 /** Sets default scan parameters in FW
  *
  * @param[in]  assoc_time    : Specifies dwell time per channel in associated state
@@ -243,6 +272,21 @@ extern wwd_result_t wwd_wifi_get_scan_params( uint32_t* assoc_time,
  */
 extern wwd_result_t wwd_wifi_join( const wiced_ssid_t* ssid, wiced_security_t auth_type, const uint8_t* security_key, uint8_t key_length, host_semaphore_type_t* semaphore );
 
+/**
+ * Halt any joins, including ongoing ones
+ * @param[in] halt: WICED_TRUE: halt all join attempts; WICED_FALSE: allow join attempts to proceed
+ * !!!!NOTE: wwd_wifi_join_halt( WICED_FALSE ) needs to be called after any wwd_wifi_join_halt( WICED_TRUE ) call
+ * to allow subsequent join attempts to proceed.
+ * @return @ref wiced_result_t WICED_SUCCESS
+ */
+extern wwd_result_t wwd_wifi_join_halt( wiced_bool_t halt );
+
+/**
+ * Query: Is there a join in progress that can be halted?
+ * @param[in] interface: interface to halt join on
+ * @return @ref wiced_result_t WICED_TRUE if join can be halted currently; WICED_FALSE otherwise
+ */
+extern wiced_bool_t wwd_wifi_join_is_ready_to_halt( wwd_interface_t interface );
 
 /** Joins a specific Wi-Fi network
  *
@@ -381,6 +425,17 @@ extern wwd_result_t wwd_wifi_is_ready_to_transceive( wwd_interface_t interface )
  */
 extern wwd_result_t wwd_wifi_enable_powersave( void );
 
+/** Enables powersave mode on specified interface without regard for throughput reduction
+ *
+ *  This function enables (legacy) 802.11 PS-Poll mode and should be used
+ *  to achieve the lowest power consumption possible when the Wi-Fi device
+ *  is primarily passively listening to the network
+ *
+ * @param[in]   interface             : The variable to set WLAN interface type
+ * @return @ref wwd_result_t
+ */
+extern wwd_result_t wwd_wifi_enable_powersave_interface( wwd_interface_t interface );
+
 /* Enables powersave mode while attempting to maximise throughput
  *
  * Network traffic is typically bursty. Reception of a packet often means that another
@@ -399,6 +454,24 @@ extern wwd_result_t wwd_wifi_enable_powersave( void );
  */
 extern wwd_result_t wwd_wifi_enable_powersave_with_throughput( uint16_t return_to_sleep_delay );
 
+/* Enables powersave mode on specified interface while attempting to maximise throughput
+ *
+ * Network traffic is typically bursty. Reception of a packet often means that another
+ * packet will be received shortly afterwards (and vice versa for transmit).
+ *
+ * In high throughput powersave mode, rather then entering powersave mode immediately
+ * after receiving or sending a packet, the WLAN chip waits for a timeout period before
+ * returning to sleep.
+ *
+ * @return  WWD_SUCCESS : if power save mode was successfully enabled
+ *          Error code   : if power save mode was not successfully enabled
+ *
+ * @param[in] return_to_sleep_delay : The variable to set return to sleep delay.*
+ * @param[in] interface             : The variable to set WLAN interface type
+ *
+ * return to sleep delay must be set to a multiple of 10 and not equal to zero.
+ */
+extern wwd_result_t wwd_wifi_enable_powersave_with_throughput_interface( uint16_t return_to_sleep_delay, wwd_interface_t interface );
 
 /** Disables 802.11 power save mode
  *
@@ -406,6 +479,15 @@ extern wwd_result_t wwd_wifi_enable_powersave_with_throughput( uint16_t return_t
  *          Error code   : if power save mode was not successfully disabled
  */
 extern wwd_result_t wwd_wifi_disable_powersave( void );
+
+/** Disables 802.11 power save mode on specified interface
+ *
+ * @return  WWD_SUCCESS : if power save mode was successfully disabled
+ *          Error code   : if power save mode was not successfully disabled
+ *
+ * @param[in] interface             : The variable to set WLAN interface type
+ */
+extern wwd_result_t wwd_wifi_disable_powersave_interface( wwd_interface_t interface );
 
 /** Gets the tx power in dBm units
  *
@@ -560,6 +642,31 @@ extern wwd_result_t wwd_wifi_get_ap_client_rssi( int32_t* rssi, const wiced_mac_
  *          Error code   : if the antenna selection was not set
  */
 extern wwd_result_t wwd_wifi_select_antenna( wiced_antenna_t antenna );
+
+/* Find non-radar, 20 MHz channel with lowest Clear Channel Assessment (CCA) and its CCA score.
+ * Use channels in specified band.
+ * @param band: WICED_802_11_BAND_2_4GHZ or WICED_802_11_BAND_5GHZ
+ * @param *channel: Pointer to best channel
+ * @param *score:  Pointer to CCA score of best channel
+ * @param duration:  time to dwell on channel in order to measure CCA.  In milliseconds.
+ * Note longer dwell time gives more accurate readings but leaves less time for actual traffic.
+ * 50-75 millisecs gives reasonable results for most situations.
+ *
+ * @return  WWD_SUCCESS : Found best channel.
+ *          Error code   : Unable to find best channel.
+ */
+extern wwd_result_t wwd_wifi_get_best_cca(int32_t band, uint32_t *channel, uint8_t *score, uint32_t duration);
+
+/* Given a specific channel, return Clear Channel Assesment (CCA) score for that channel.
+ *
+ * @param  channel: Which 20 Mhz channel to measure
+ * @param  duration: How long to measure for, in milliseconds.
+ * @param  *score:  The resulting CCA score.
+ *
+ * @return  WWD_SUCCESS : Success
+ *          Error code   : Unable to perform measurement
+ */
+extern wwd_result_t wwd_wifi_get_cca_for_channel(uint32_t channel, uint32_t duration, uint8_t *score);
 
 /** Bring down the Wi-Fi core
  *
@@ -958,9 +1065,21 @@ extern wwd_result_t wwd_wifi_disable_keep_alive( uint8_t id );
  * @return     @ref wwd_result_t
  */
 extern wwd_result_t wwd_wifi_get_wifi_version( char* version, uint8_t length );
+/*
+ * This function gets the feature capabilities string from the WLAN firmware.
+ *
+ * @param char *         : pointer to string buffer
+ * @param uint16_t       : length of string buffer
+ * @param const char *   : Optional.  If nonnull string, return WWD_SUCCESS if cap is present. Failure otherwise. Allows for simple checking of a specific capability.
+ *
+ * @returns : status WWD_SUCCESS or failure
+ */
+extern wwd_result_t wwd_wifi_get_cap( char* buffer, uint16_t buflen, char *cap );
 
+
+/* Enable or Disable feature that leaves driver firmware running but powers off radio when not in use. */
 extern wwd_result_t wwd_wifi_enable_minimum_power_consumption( void );
-
+extern wwd_result_t wwd_wifi_disable_minimum_power_consumption( void );
 /*
  * APIs to write a bit/word to OTP at the specified bit/word offset. (An OTP word is 16 bits)
  * These APIs work only with the MFG WLAN FW and are not supported on the Production WLAN FW.
@@ -979,11 +1098,18 @@ extern wwd_result_t wwd_wifi_read_wlan_log( char* buffer, uint32_t buffer_size )
 
 extern wwd_result_t wwd_wifi_set_passphrase( const uint8_t* security_key, uint8_t key_length, wwd_interface_t interface );
 
-/* Set and get IOVAR parameters */
+/* Set and get IOVAR values */
+/* do a parameterless SET; for example for up or down*/
+extern wwd_result_t wwd_wifi_set_iovar_void( const char* iovar, wwd_interface_t interface );
 extern wwd_result_t wwd_wifi_set_iovar_value( const char* iovar, uint32_t  value, wwd_interface_t interface );
 extern wwd_result_t wwd_wifi_get_iovar_value( const char* iovar, uint32_t* value, wwd_interface_t interface );
+
+/* Set and get IOCTL values */
+extern wwd_result_t wwd_wifi_set_ioctl_void( uint32_t ioctl, wwd_interface_t interface );
 extern wwd_result_t wwd_wifi_set_ioctl_value( uint32_t ioctl, uint32_t  value, wwd_interface_t interface );
 extern wwd_result_t wwd_wifi_get_ioctl_value( uint32_t ioctl, uint32_t* value, wwd_interface_t interface );
+extern wwd_result_t wwd_wifi_set_ioctl_buffer( uint32_t ioctl, void *buffer, uint16_t buffer_length, wwd_interface_t interface );
+extern wwd_result_t wwd_wifi_set_iovar_buffer( const char* iovar, void *buffer, uint16_t buffer_length, wwd_interface_t interface );
 extern wwd_result_t wwd_wifi_get_revision_info( wwd_interface_t interface, wlc_rev_info_t *buf, uint16_t buflen );
 
 /* 802.11K (Radio Measurement) APIs */
@@ -1179,6 +1305,30 @@ extern wwd_result_t wwd_wifi_set_custom_country_code( const wiced_country_info_t
  */
 extern wwd_result_t wwd_wifi_send_csa( const wiced_chan_switch_t* csa, wwd_interface_t interface );
 
+/** Setup SoftAP
+ *
+ * @param[in] ssid       : A null terminated string containing the SSID name of the network to start
+ * @param[in] auth_type  : Authentication type: \n
+ *                         - WICED_SECURITY_OPEN           - Open Security \n
+ *                         - WICED_SECURITY_WPA_TKIP_PSK   - WPA Security \n
+ *                         - WICED_SECURITY_WPA2_AES_PSK   - WPA2 Security using AES cipher \n
+ *                         - WICED_SECURITY_WPA2_MIXED_PSK - WPA2 Security using AES and/or TKIP ciphers \n
+ *                         - WEP security is NOT IMPLEMENTED. It is NOT SECURE! \n
+ * @param[in] security_key : A byte array containing the cleartext security key for the network
+ * @param[in] key_length   : The length of the security_key in bytes.
+ * @param[in] channel      : 802.11 channel number
+ * @return     @ref wwd_result_t
+ */
+extern wwd_result_t wwd_wifi_ap_init( wiced_ssid_t* ssid, wiced_security_t auth_type, const uint8_t* security_key, uint8_t key_length, uint8_t channel );
+
+/** start SoftAP
+ *
+ * @param[in] none
+ * @return     @ref wwd_result_t
+ */
+extern wwd_result_t wwd_wifi_ap_up( void );
+
+
 /** RRM report callback function pointer type
  *
  * @param result_ptr  : A pointer to the pointer that indicates where to put the next RRM report
@@ -1259,8 +1409,28 @@ wwd_result_t wwd_get_phyrate_log( wiced_phyrate_log_t *data);
  * Returns the WiFi driver statistics counters since the last reset.
  * @param[in] a pointer to the counter staticstics buffer to fill
  */
-
 wwd_result_t wwd_get_counters( wiced_counters_t *data);
+
+/**
+ ******************************************************************************
+ * Print out an event's information for debugging help
+*/
+void wwd_log_event( const wwd_event_header_t* event_header, const uint8_t* event_data );
+
+/**
+ ******************************************************************************
+* Deep Sleep 1 (DS1) functions
+*/
+wwd_result_t wwd_wifi_enter_ds1( wwd_interface_t interface, uint32_t ulp_wait_milliseconds );
+wwd_result_t wwd_wifi_exit_ds1( wwd_interface_t interface );
+
+/**
+ ******************************************************************************
+* Wake On Wireless LAN (WOWL) functions
+*/
+wwd_result_t wwd_wifi_wowl_enable( wwd_interface_t interface, uint32_t wowl_caps, uint32_t wowl_os,
+     wl_mkeep_alive_pkt_t *wowl_keepalive_data, uint8_t *pattern_data, uint32_t pattern_data_size, uint32_t *arp_host_ip_v4_address );
+wwd_result_t wwd_wifi_wowl_disable( wwd_interface_t interface );
 
 /**
  ******************************************************************************
@@ -1272,32 +1442,25 @@ wwd_result_t wwd_get_counters( wiced_counters_t *data);
  * Adds are cumulative and can be called one after another.
  * @param[in] ssid of the network
  * @param[in] security settings for the preferred network
+ * @return       WWD_SUCCESS or error; pno will always be left in a stopped state after calling this API;
+ *                    use wwd_wifi_pno_start to get pno process started again.
  */
-
 wwd_result_t wwd_wifi_pno_add_network( wiced_ssid_t *ssid, wiced_security_t security );
 
 /**
  * clear added networks and disable pno scanning
  */
-
 wwd_result_t wwd_wifi_pno_clear( void );
 
 /**
  * enable pno scan process now; use previously added networks
  */
-
 wwd_result_t wwd_wifi_pno_start( void );
 
 /**
  * disable pno scan process now; do not clear previously added networks
  */
-
 wwd_result_t wwd_wifi_pno_stop( void );
-
-/**
-* Print out an event's information for debugging help
-*/
-void wwd_log_event( const wwd_event_header_t* event_header, const uint8_t* event_data );
 
 /*@+exportlocal@*/
 

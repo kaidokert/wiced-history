@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -59,6 +82,10 @@
 #define DCT_CRC32_CALCULATION_SIZE_ON_STACK     128
 #endif
 
+#ifndef DCT_SFLASH_COPY_BUFFER_SIZE_ON_STACK
+#define DCT_SFLASH_COPY_BUFFER_SIZE_ON_STACK    64
+#endif
+
 /******************************************************
  *                    Constants
  ******************************************************/
@@ -67,6 +94,9 @@
 #ifndef PLATFORM_DCT_COPY1_SIZE
 #define PLATFORM_DCT_COPY1_SIZE (PLATFORM_DCT_COPY1_END_ADDRESS - PLATFORM_DCT_COPY1_START_ADDRESS)
 #endif
+
+#define PLATFORM_SECURE_DCT_METADATA_SIZE (SECURE_SFLASH_METADATA_SIZE(PLATFORM_DCT_COPY1_SIZE))
+#define PLATFORM_SECURE_DCT_COPY_SIZE     (PLATFORM_DCT_COPY1_SIZE - PLATFORM_SECURE_DCT_METADATA_SIZE)
 
 /******************************************************
  *                   Enumerations
@@ -100,7 +130,7 @@
  *
  *  ota2_bootloader.mk
  *      # stack needs to be big enough to handle the CRC32 calculation buffer
- *      ifeq ($(filter $(PLATFORM),BCM943909WCD1_3.B0 BCM943909WCD1_3.B1 BCM943909B0FCBU BCM943907WAE_1.B0 BCM943907WAE_1.B1 BCM943907APS.B0 BCM943907APS.B1 BCM943907AEVAL2F_1.B0 BCM943907AEVAL2F_1.B1 BCM943907AEVAL1F_1.B0 BCM943907AEVAL1F_1.B1),)
+ *      ifeq ($(filter $(PLATFORM),BCM943909WCD1_3 BCM943909WCD1_3 BCM943909B0FCBU BCM943907WAE_1 BCM943907WAE_1 BCM943907APS BCM943907APS BCM943907AEVAL2F BCM943907AEVAL1F),)
  *      NoOS_START_STACK   := 16000
  *      GLOBAL_DEFINES     += DCT_CRC32_CALCULATION_SIZE_ON_STACK=256
  *      else
@@ -132,8 +162,9 @@ static uint32_t wiced_dct_generate_crc_from_flash(sflash_handle_t *sflash_handle
                                                   wiced_dct_header_in_address_range_t header_in_range, uint32_t crc_start );
 
 static wiced_result_t wiced_dct_copy_sflash( uint32_t dest_loc, uint32_t src_loc, uint32_t size );
-
 wiced_dct_sdk_ver_t wiced_dct_external_determine_version( platform_dct_header_t* dct_header, platform_dct_version_t* dct_version );
+static int sflash_map_address_read_secure( const sflash_handle_t* const handle, unsigned long device_address, /*@out@*/ /*@dependent@*/ void* data_addr, unsigned int size );
+static int sflash_map_address_write_secure ( const sflash_handle_t* const handle, unsigned long device_address,  /*@observer@*/ const void* const data_addr, unsigned int size );
 
 /******************************************************
  *               Variables Definitions
@@ -160,6 +191,29 @@ static const uint32_t DCT_section_offsets[] =
  *               Function Definitions
  ******************************************************/
 
+static int sflash_map_address_read_secure( const sflash_handle_t* const handle, unsigned long device_address, /*@out@*/ /*@dependent@*/ void* data_addr, unsigned int size )
+{
+    unsigned long start_sector;
+    unsigned long offset;
+
+    start_sector   = ( device_address >= PLATFORM_DCT_COPY2_START_ADDRESS ) ? PLATFORM_DCT_COPY2_START_ADDRESS : PLATFORM_DCT_COPY1_START_ADDRESS;
+    offset         = device_address - start_sector;
+    wiced_assert( "Reading past end of DCT", ( offset < ( start_sector + PLATFORM_SECURE_DCT_METADATA_SIZE) ) );
+    device_address = start_sector + SECURE_SECTOR_ADDRESS( offset ) + OFFSET_WITHIN_SECURE_SECTOR( offset );
+    return sflash_read_secure( handle, device_address, data_addr, size);
+}
+
+static int sflash_map_address_write_secure ( const sflash_handle_t* const handle, unsigned long device_address,  /*@observer@*/ const void* const data_addr, unsigned int size )
+{
+    unsigned long start_sector;
+    unsigned long offset;
+
+    start_sector   = ( device_address >= PLATFORM_DCT_COPY2_START_ADDRESS ) ? PLATFORM_DCT_COPY2_START_ADDRESS : PLATFORM_DCT_COPY1_START_ADDRESS;
+    offset         = device_address - start_sector;
+    wiced_assert( "Writing past end of DCT", ( offset < ( start_sector + PLATFORM_SECURE_DCT_METADATA_SIZE) ) );
+    device_address = start_sector + SECURE_SECTOR_ADDRESS( offset ) + OFFSET_WITHIN_SECURE_SECTOR( offset );
+    return sflash_write_secure( handle, device_address, data_addr, size);
+}
 /*
  * NOTE: sflash_init() must be called before calling this routine!
  */
@@ -187,7 +241,9 @@ static uint32_t wiced_dct_generate_crc_from_flash(sflash_handle_t *sflash_handle
     uint32_t calculated_dct_crc32_value;
     uint32_t curr_addr;
     uint32_t crc_offset;
+    sflash_read_t sflash_read_func;
 
+    sflash_read_func = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_read_secure : sflash_read;
     crc_offset = 0;
 
     if (header_in_range == WICED_DCT_CRC_IN_HEADER)
@@ -215,7 +271,7 @@ static uint32_t wiced_dct_generate_crc_from_flash(sflash_handle_t *sflash_handle
             chunk_size = sizeof( temp_buff );
         }
 
-        if (sflash_read( sflash_handle, curr_addr, temp_buff, chunk_size ) != 0)
+        if (sflash_read_func( sflash_handle, curr_addr, temp_buff, chunk_size ) != 0)
         {
              return 0;
         }
@@ -328,6 +384,9 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
     CRC_TYPE                saved_crc32;
     wiced_dct_sdk_ver_t     this_dct_version;
     sflash_handle_t         sflash_handle;
+    sflash_read_t           sflash_read_func;
+
+    sflash_read_func = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_read_secure : sflash_read;
 
     /* assume bad DCT */
     this_dct_version = DCT_BOOTLOADER_SDK_UNKNOWN;
@@ -347,27 +406,22 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
     }
 
     /* read in the header - it always starts at the beginning of the DCT DATA */
-    if (sflash_read(&sflash_handle, device_start_address, &dct_header, sizeof(platform_dct_header_t)) != 0)
+    if (sflash_read_func(&sflash_handle, device_start_address, &dct_header, sizeof(platform_dct_header_t)) != 0)
     {
-        deinit_sflash(&sflash_handle);
-        goto _version_test_done;
+        goto _version_test_done_and_deinit_sflash;
     }
 
     /* check if header makes sense */
     if (wiced_dct_minimal_check_dct_header(&dct_header) != WICED_SUCCESS)
     {
-        deinit_sflash(&sflash_handle);
-        goto _version_test_done;
+        goto _version_test_done_and_deinit_sflash;
     }
 
     /* header made sense - read the version struct - it ONLY works with the latest platform_dct_data_t */
-    if (sflash_read(&sflash_handle, device_start_address + (uint32_t)OFFSETOF(platform_dct_data_t, dct_version), &dct_version, sizeof(platform_dct_version_t)) != 0)
+    if (sflash_read_func(&sflash_handle, device_start_address + (uint32_t)OFFSETOF(platform_dct_data_t, dct_version), &dct_version, sizeof(platform_dct_version_t)) != 0)
     {
-        deinit_sflash(&sflash_handle);
-        goto _version_test_done;
+        goto _version_test_done_and_deinit_sflash;
     }
-
-    deinit_sflash(&sflash_handle);
 
     /* while the Bootloader DCT DATA may not have the dct_version, we may have updated the DCT already
      * does the dct_version structure make sense ?
@@ -381,7 +435,8 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
         if ((dct_header.initial_write == 1) && (dct_header.crc32 == 0))
         {
             /* good, return with old SDK version */
-            return DCT_BOOTLOADER_SDK_VERSION;
+            this_dct_version = DCT_BOOTLOADER_SDK_VERSION;
+            goto _version_test_done_and_deinit_sflash;
         }
         else
         {
@@ -398,12 +453,14 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
                                                             device_end_address, WICED_DCT_CRC_NOT_IN_RANGE, dct_crc32 );
             if (dct_crc32 == saved_crc32)
             {
-                    /* good, return with old SDK version */
-                return DCT_BOOTLOADER_SDK_VERSION;
+                /* good, return with old SDK version */
+                this_dct_version = DCT_BOOTLOADER_SDK_VERSION;
+                goto _version_test_done_and_deinit_sflash;
             }
         }
 #else
-        return DCT_BOOTLOADER_SDK_VERSION;
+        this_dct_version = DCT_BOOTLOADER_SDK_VERSION;
+        goto _version_test_done_and_deinit_sflash;
 #endif
      }
      else
@@ -423,7 +480,8 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
              {
                  *sequence = (int)dct_header.sequence;
              }
-             return DCT_BOOTLOADER_SDK_CURRENT;
+             this_dct_version = DCT_BOOTLOADER_SDK_CURRENT;
+             goto _version_test_done_and_deinit_sflash;
          }
          else
          {
@@ -449,7 +507,8 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
                  {
                      *sequence = (int)dct_header.sequence;
                  }
-                 return DCT_BOOTLOADER_SDK_CURRENT;
+                 this_dct_version = DCT_BOOTLOADER_SDK_CURRENT;
+                 goto _version_test_done_and_deinit_sflash;
              }
          }
 #else
@@ -465,7 +524,8 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
             {
                 *sequence = dct_version.sequence;
             }
-            return DCT_BOOTLOADER_SDK_CURRENT;
+            this_dct_version = DCT_BOOTLOADER_SDK_CURRENT;
+            goto _version_test_done_and_deinit_sflash;
         }
         else
         {
@@ -496,11 +556,15 @@ wiced_dct_sdk_ver_t wiced_dct_validate_and_determine_version(uint32_t device_sta
                 {
                     *sequence = dct_version.sequence;
                 }
-                return DCT_BOOTLOADER_SDK_CURRENT;
+                this_dct_version = DCT_BOOTLOADER_SDK_CURRENT;
+                goto _version_test_done_and_deinit_sflash;
             }
         }
 #endif
      }
+
+_version_test_done_and_deinit_sflash:
+    deinit_sflash(&sflash_handle);
 
 _version_test_done:
 
@@ -522,9 +586,11 @@ static wiced_result_t wiced_dct_start_new_from_current( uint32_t *new_dct,
     uint32_t                curr_dct;
     platform_dct_header_t   curr_dct_header;
     platform_dct_version_t  curr_dct_version;
-
     sflash_handle_t         sflash_handle;
     int                     ret;
+    sflash_read_t           sflash_read_func;
+
+    sflash_read_func = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_read_secure : sflash_read;
 
     if ( ( new_dct == NULL ) || ( new_dct_header == NULL ) || ( new_dct_version == NULL ) )
     {
@@ -553,8 +619,8 @@ static wiced_result_t wiced_dct_start_new_from_current( uint32_t *new_dct,
         return WICED_ERROR;
     }
 
-    ret = sflash_read(&sflash_handle, curr_dct, &curr_dct_header, sizeof(curr_dct_header));
-    ret |= sflash_read(&sflash_handle, curr_dct + (uint32_t)OFFSETOF(platform_dct_data_t, dct_version), &curr_dct_version, sizeof(curr_dct_version));
+    ret = sflash_read_func(&sflash_handle, curr_dct, &curr_dct_header, sizeof(curr_dct_header));
+    ret |= sflash_read_func(&sflash_handle, curr_dct + (uint32_t)OFFSETOF(platform_dct_data_t, dct_version), &curr_dct_version, sizeof(curr_dct_version));
     deinit_sflash( &sflash_handle );
     if (ret != 0)
     {
@@ -587,13 +653,18 @@ static wiced_result_t wiced_dct_finish_new_dct( uint32_t new_dct,
                                                 platform_dct_header_t* new_dct_header,
                                                 platform_dct_version_t* new_dct_version )
 {
-    sflash_handle_t sflash_handle;
-    uint32_t        new_crc32;
-    char            zero_byte = 0;
+    sflash_handle_t  sflash_handle;
+    uint32_t         new_crc32;
+    char             zero_byte = 0;
+    sflash_write_t   sflash_write_func = sflash_write;
+    uint32_t         platform_dct_copy_size = PLATFORM_DCT_COPY1_SIZE;
+    uint32_t         curr_dct = (new_dct == PLATFORM_DCT_COPY1_START_ADDRESS ) ? PLATFORM_DCT_COPY2_START_ADDRESS : PLATFORM_DCT_COPY1_START_ADDRESS;
 
-#if !defined(DCT_BOOTLOADER_CRC_IS_IN_HEADER)
-    uint32_t        curr_dct = (new_dct == PLATFORM_DCT_COPY1_START_ADDRESS ) ? PLATFORM_DCT_COPY2_START_ADDRESS : PLATFORM_DCT_COPY1_START_ADDRESS;
-#endif
+    if (PLATFORM_SECUREDCT_ENABLED )
+    {
+        sflash_write_func = sflash_map_address_write_secure;
+        platform_dct_copy_size = PLATFORM_SECURE_DCT_COPY_SIZE;
+    }
 
     /* generate the new CRC value
      * save these values - we need to calculate the CRC with them as 0x00
@@ -628,7 +699,7 @@ static wiced_result_t wiced_dct_finish_new_dct( uint32_t new_dct,
     new_crc32 = crc32( (uint8_t*)new_dct_version, sizeof( platform_dct_version_t ), new_crc32 );
     new_crc32 = wiced_dct_generate_crc_from_flash( &sflash_handle,
                                                    new_dct + OFFSETOF(platform_dct_data_t, dct_version) + sizeof(platform_dct_version_t),
-                                                   new_dct + PLATFORM_DCT_COPY1_SIZE,
+                                                   new_dct + platform_dct_copy_size,
                                                    WICED_DCT_CRC_NOT_IN_RANGE, new_crc32);
 #if defined(DCT_BOOTLOADER_CRC_IS_IN_HEADER)
     new_dct_header->crc32               = new_crc32;
@@ -641,15 +712,15 @@ static wiced_result_t wiced_dct_finish_new_dct( uint32_t new_dct,
                                                      */
 
     /* Write the new DCT header & version data. */
-    if ( (sflash_write(&sflash_handle, new_dct + OFFSETOF(platform_dct_data_t, dct_header), new_dct_header, sizeof(platform_dct_header_t)) != 0) ||
-         (sflash_write(&sflash_handle, new_dct + OFFSETOF(platform_dct_data_t, dct_version), new_dct_version, sizeof(platform_dct_version_t)) != 0) )
+    if ( (sflash_write_func(&sflash_handle, new_dct + OFFSETOF(platform_dct_data_t, dct_header), new_dct_header, sizeof(platform_dct_header_t)) != 0) ||
+         (sflash_write_func(&sflash_handle, new_dct + OFFSETOF(platform_dct_data_t, dct_version), new_dct_version, sizeof(platform_dct_version_t)) != 0) )
     {
         deinit_sflash(&sflash_handle);
         return WICED_ERROR;
     }
 
     /* Write a zero into write_incomplete */
-    if (sflash_write(&sflash_handle, new_dct + OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, write_incomplete), &zero_byte, sizeof( zero_byte )) != 0)
+    if (sflash_write_func(&sflash_handle, new_dct + OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, write_incomplete), &zero_byte, sizeof( zero_byte )) != 0)
     {
         deinit_sflash(&sflash_handle);
         return WICED_ERROR;
@@ -657,7 +728,7 @@ static wiced_result_t wiced_dct_finish_new_dct( uint32_t new_dct,
 
 #if !defined(DCT_BOOTLOADER_CRC_IS_IN_HEADER)
     /* Write the zero into is_current_dct in the old DCT */
-    if (sflash_write(&sflash_handle, curr_dct + OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, is_current_dct), &zero_byte, sizeof( zero_byte )) != 0)
+    if (sflash_write_func(&sflash_handle, curr_dct + OFFSETOF(platform_dct_data_t, dct_header) + OFFSETOF(platform_dct_header_t, is_current_dct), &zero_byte, sizeof( zero_byte )) != 0)
     {
         deinit_sflash(&sflash_handle);
         return WICED_ERROR;
@@ -666,7 +737,7 @@ static wiced_result_t wiced_dct_finish_new_dct( uint32_t new_dct,
 
     /* Don't erase old one, we'll erase it right before we create a new one.
      * But we do need to write the zero into initial_write in the old DCT */
-    if (sflash_write(&sflash_handle, curr_dct + OFFSETOF(platform_dct_data_t, dct_version) + OFFSETOF(platform_dct_version_t, initial_write), &zero_byte, sizeof( zero_byte )) != 0)
+    if (sflash_write_func(&sflash_handle, curr_dct + OFFSETOF(platform_dct_data_t, dct_version) + OFFSETOF(platform_dct_version_t, initial_write), &zero_byte, sizeof( zero_byte )) != 0)
     {
         deinit_sflash(&sflash_handle);
         return WICED_ERROR;
@@ -685,12 +756,11 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 {
     sflash_handle_t         sflash_handle;
     wiced_result_t          result = WICED_ERROR;
-
+    sflash_read_t           sflash_read_func;
+    sflash_write_t          sflash_write_func;
     /* dct_header will ALWAYS be platfrom_dct_header_t */
     platform_dct_header_t   *dct_header_src,  *dct_header_dst;
-
     platform_dct_version_t  *dct_version_src, *dct_version_dst;
-
     uint8_t*                allocated_src_buff = NULL;
     uint8_t*                allocated_dst_buff = NULL;
     bootloader_dct_data_t*  src_dct_buffer = NULL;
@@ -700,6 +770,9 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
     {
         return WICED_BADARG;
     }
+
+    sflash_read_func  = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_read_secure  : sflash_read;
+    sflash_write_func = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_write_secure : sflash_write;
 
     allocated_src_buff = (uint8_t*)calloc(LARGEST_DCT_SUB_STRUCTURE_SIZE, 1);
     allocated_dst_buff = (uint8_t*)calloc(LARGEST_DCT_SUB_STRUCTURE_SIZE, 1);
@@ -735,11 +808,11 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 
     /* mfg_info */
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, mfg_info)), src_dct_buffer, sizeof(platform_dct_mfg_info_t)) == WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, mfg_info)), src_dct_buffer, sizeof(platform_dct_mfg_info_t)) == WICED_SUCCESS)
     {
         if (wiced_dct_update_mfg_info_to_current((platform_dct_mfg_info_t*)dst_dct_buffer, (platform_dct_mfg_info_t*)src_dct_buffer) == WICED_SUCCESS)
         {
-            if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, mfg_info), dst_dct_buffer, sizeof(platform_dct_mfg_info_t) ) != PLATFORM_SUCCESS)
+            if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, mfg_info), dst_dct_buffer, sizeof(platform_dct_mfg_info_t) ) != PLATFORM_SUCCESS)
             {
                 goto _update_fail;
             }
@@ -753,33 +826,33 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
      * cooee_key  [ COOEE_KEY_SIZE ];      -- 16
      */
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, private_key)), src_dct_buffer, PRIVATE_KEY_SIZE) == WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, private_key)), src_dct_buffer, PRIVATE_KEY_SIZE) == WICED_SUCCESS)
     {
         if (wiced_dct_update_security_private_key_to_current((char*)dst_dct_buffer, (char*)src_dct_buffer) == WICED_SUCCESS)
         {
-            if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, private_key), dst_dct_buffer, PRIVATE_KEY_SIZE ) != PLATFORM_SUCCESS)
+            if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, private_key), dst_dct_buffer, PRIVATE_KEY_SIZE ) != PLATFORM_SUCCESS)
             {
                 goto _update_fail;
             }
         }
     }
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, certificate)), src_dct_buffer, CERTIFICATE_SIZE) == WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, certificate)), src_dct_buffer, CERTIFICATE_SIZE) == WICED_SUCCESS)
     {
         if (wiced_dct_update_security_certificate_to_current((char*)dst_dct_buffer, (char*)src_dct_buffer) == WICED_SUCCESS)
         {
-            if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, certificate), dst_dct_buffer, CERTIFICATE_SIZE ) != PLATFORM_SUCCESS)
+            if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, certificate), dst_dct_buffer, CERTIFICATE_SIZE ) != PLATFORM_SUCCESS)
             {
                 goto _update_fail;
             }
         }
     }
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, cooee_key)), src_dct_buffer, COOEE_KEY_SIZE) == WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, cooee_key)), src_dct_buffer, COOEE_KEY_SIZE) == WICED_SUCCESS)
     {
         if (wiced_dct_update_security_cooee_key_to_current((uint8_t*)dst_dct_buffer, (uint8_t*)src_dct_buffer) == WICED_SUCCESS)
         {
-            if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, cooee_key), dst_dct_buffer, COOEE_KEY_SIZE ) != PLATFORM_SUCCESS)
+            if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, security_credentials) + OFFSETOF(platform_dct_security_t, cooee_key), dst_dct_buffer, COOEE_KEY_SIZE ) != PLATFORM_SUCCESS)
             {
                 goto _update_fail;
             }
@@ -788,11 +861,11 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 
     /* wifi config */
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, wifi_config)), src_dct_buffer, sizeof(platform_dct_wifi_config_t)) == WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, wifi_config)), src_dct_buffer, sizeof(platform_dct_wifi_config_t)) == WICED_SUCCESS)
     {
         if (wiced_dct_update_wifi_config_to_current((platform_dct_wifi_config_t*)dst_dct_buffer, (platform_dct_wifi_config_t*)src_dct_buffer) == WICED_SUCCESS)
         {
-            if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, wifi_config), dst_dct_buffer, sizeof(platform_dct_wifi_config_t) ) != PLATFORM_SUCCESS)
+            if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, wifi_config), dst_dct_buffer, sizeof(platform_dct_wifi_config_t) ) != PLATFORM_SUCCESS)
             {
                 goto _update_fail;
             }
@@ -802,7 +875,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
     /* ethernet config */
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
 #ifndef BOOTLOADER_NO_ETHER_CONFIG
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, ethernet_config)), src_dct_buffer, sizeof(platform_dct_ethernet_config_t)) != WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, ethernet_config)), src_dct_buffer, sizeof(platform_dct_ethernet_config_t)) != WICED_SUCCESS)
     {
         goto _update_fail;
     }
@@ -811,7 +884,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 #endif
     if (wiced_dct_update_ethernet_config_to_current((platform_dct_ethernet_config_t*)dst_dct_buffer, (platform_dct_ethernet_config_t*)src_dct_buffer) == WICED_SUCCESS)
     {
-        if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, ethernet_config), dst_dct_buffer, sizeof(platform_dct_ethernet_config_t) ) != PLATFORM_SUCCESS)
+        if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, ethernet_config), dst_dct_buffer, sizeof(platform_dct_ethernet_config_t) ) != PLATFORM_SUCCESS)
         {
             goto _update_fail;
         }
@@ -819,7 +892,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
 #ifndef BOOTLOADER_NO_NETWORK_CONFIG
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, network_config)), src_dct_buffer, sizeof(bootloader_dct_network_config_t)) != WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, network_config)), src_dct_buffer, sizeof(bootloader_dct_network_config_t)) != WICED_SUCCESS)
     {
         goto _update_fail;
     }
@@ -828,7 +901,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 #endif
     if (wiced_dct_update_network_config_to_current((platform_dct_network_config_t*)dst_dct_buffer, (bootloader_dct_network_config_t*)src_dct_buffer) == WICED_SUCCESS)
     {
-        if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, network_config), dst_dct_buffer, sizeof(platform_dct_network_config_t) ) != PLATFORM_SUCCESS)
+        if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, network_config), dst_dct_buffer, sizeof(platform_dct_network_config_t) ) != PLATFORM_SUCCESS)
         {
             goto _update_fail;
         }
@@ -836,7 +909,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
 #ifndef BOOTLOADER_NO_BT_CONFIG
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, bt_config)), src_dct_buffer, sizeof(bootloader_dct_bt_config_t)) != WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, bt_config)), src_dct_buffer, sizeof(bootloader_dct_bt_config_t)) != WICED_SUCCESS)
     {
         goto _update_fail;
     }
@@ -845,7 +918,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 #endif
     if (wiced_dct_update_bt_config_to_current((platform_dct_bt_config_t*)dst_dct_buffer, (bootloader_dct_bt_config_t*)src_dct_buffer) == WICED_SUCCESS)
     {
-        if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, bt_config), dst_dct_buffer, sizeof(platform_dct_bt_config_t) ) != PLATFORM_SUCCESS)
+        if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, bt_config), dst_dct_buffer, sizeof(platform_dct_bt_config_t) ) != PLATFORM_SUCCESS)
         {
             goto _update_fail;
         }
@@ -853,7 +926,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
 #ifndef BOOTLOADER_NO_P2P_CONFIG
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, p2p_config)), src_dct_buffer, sizeof(platform_dct_p2p_config_t)) != WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, p2p_config)), src_dct_buffer, sizeof(platform_dct_p2p_config_t)) != WICED_SUCCESS)
     {
         goto _update_fail;
     }
@@ -862,7 +935,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 #endif
     if (wiced_dct_update_p2p_config_to_current((platform_dct_p2p_config_t*)dst_dct_buffer, (platform_dct_p2p_config_t*)src_dct_buffer) == WICED_SUCCESS)
     {
-        if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, p2p_config), dst_dct_buffer, sizeof(platform_dct_p2p_config_t) ) != PLATFORM_SUCCESS)
+        if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, p2p_config), dst_dct_buffer, sizeof(platform_dct_p2p_config_t) ) != PLATFORM_SUCCESS)
         {
             goto _update_fail;
         }
@@ -870,7 +943,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 
     memset( dst_dct_buffer, 0x00, LARGEST_DCT_SUB_STRUCTURE_SIZE);
 #ifndef BOOTLOADER_NO_OTA2_CONFIG
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, ota2_config)), src_dct_buffer, sizeof(bootloader_dct_ota2_config_t)) == WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, ota2_config)), src_dct_buffer, sizeof(bootloader_dct_ota2_config_t)) == WICED_SUCCESS)
     {
         goto _update_fail;
     }
@@ -879,7 +952,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 #endif
     if (wiced_dct_update_ota2_config_to_current((platform_dct_ota2_config_t*)dst_dct_buffer, (bootloader_dct_ota2_config_t*)src_dct_buffer) == WICED_SUCCESS)
     {
-        if ( sflash_write( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, ota2_config), dst_dct_buffer, sizeof(platform_dct_ota2_config_t) ) != PLATFORM_SUCCESS)
+        if ( sflash_write_func( &sflash_handle, dct_destination + OFFSETOF(platform_dct_data_t, ota2_config), dst_dct_buffer, sizeof(platform_dct_ota2_config_t) ) != PLATFORM_SUCCESS)
         {
             goto _update_fail;
         }
@@ -893,7 +966,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
 
     dct_header_src = (platform_dct_header_t*)src_dct_buffer;
     dct_header_dst = (platform_dct_header_t*)dst_dct_buffer;
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, dct_header)), dct_header_src, sizeof(platform_dct_header_t)) == WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, dct_header)), dct_header_src, sizeof(platform_dct_header_t)) == WICED_SUCCESS)
     {
         if (wiced_dct_update_header_to_current(dct_header_dst, dct_header_src) != WICED_SUCCESS)
         {
@@ -904,7 +977,7 @@ static wiced_result_t wiced_dct_external_dct_update(uint32_t dct_destination, ui
     dct_version_src = (platform_dct_version_t*)&dct_header_src[1];  /* use memory past the header info (src_dct_buffer is big enough ) */
     dct_version_dst = (platform_dct_version_t*)&dct_header_dst[1];  /* use memory past the header info (src_dct_buffer is big enough ) */
 #ifndef BOOTLOADER_NO_VERSION
-    if (sflash_read( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, dct_version)), dct_version_src, sizeof(platform_dct_version_t)) != WICED_SUCCESS)
+    if (sflash_read_func( &sflash_handle, (dct_source + OFFSETOF(bootloader_dct_data_t, dct_version)), dct_version_src, sizeof(platform_dct_version_t)) != WICED_SUCCESS)
     {
         goto _update_fail;
     }
@@ -954,14 +1027,24 @@ void* wiced_dct_get_current_address( dct_section_t section )
     int                     dct1_initial_write, dct2_initial_write;
     int                     dct1_sequence, dct2_sequence;
     wiced_bool_t            use_dct1;
+    sflash_write_t          sflash_write_func = sflash_write;
+    uint32_t                platform_dct_copy1_end_address = PLATFORM_DCT_COPY1_END_ADDRESS;
+    uint32_t                platform_dct_copy2_end_address = PLATFORM_DCT_COPY2_END_ADDRESS;
 
+    if ( PLATFORM_SECUREDCT_ENABLED )
+    {
+
+        sflash_write_func = sflash_map_address_write_secure ;
+        platform_dct_copy1_end_address -= PLATFORM_SECURE_DCT_METADATA_SIZE;
+        platform_dct_copy2_end_address -= PLATFORM_SECURE_DCT_METADATA_SIZE;
+    }
 
     dct1_initial_write = 0;
     dct2_initial_write = 0;
     dct1_sequence = -1;
     dct2_sequence = -1;
-    dct1_sdk_version = wiced_dct_validate_and_determine_version(PLATFORM_DCT_COPY1_START_ADDRESS, PLATFORM_DCT_COPY1_END_ADDRESS, &dct1_initial_write, &dct1_sequence);
-    dct2_sdk_version = wiced_dct_validate_and_determine_version(PLATFORM_DCT_COPY2_START_ADDRESS, PLATFORM_DCT_COPY2_END_ADDRESS, &dct2_initial_write, &dct2_sequence);
+    dct1_sdk_version = wiced_dct_validate_and_determine_version(PLATFORM_DCT_COPY1_START_ADDRESS, platform_dct_copy1_end_address, &dct1_initial_write, &dct1_sequence);
+    dct2_sdk_version = wiced_dct_validate_and_determine_version(PLATFORM_DCT_COPY2_START_ADDRESS, platform_dct_copy2_end_address, &dct2_initial_write, &dct2_sequence);
 
     /* check if one of the DCTs is valid */
     use_dct1 = WICED_TRUE;
@@ -1126,11 +1209,11 @@ _both_dcts_invalid:
             return GET_CURRENT_ADDRESS_FAILED;
         }
         /* write out the header with write_incomplete set */
-        if ((sflash_write( &sflash_handle, PLATFORM_DCT_COPY1_START_ADDRESS, &dct_header, sizeof(platform_dct_header_t) ) == 0) &&
+        if ((sflash_write_func( &sflash_handle, PLATFORM_DCT_COPY1_START_ADDRESS, &dct_header, sizeof(platform_dct_header_t) ) == 0) &&
             /* write out the new version header */
-            (sflash_write( &sflash_handle, PLATFORM_DCT_COPY1_START_ADDRESS + OFFSETOF(platform_dct_data_t, dct_version), &dct_version, sizeof(platform_dct_version_t) ) == 0) &&
+            (sflash_write_func( &sflash_handle, PLATFORM_DCT_COPY1_START_ADDRESS + OFFSETOF(platform_dct_data_t, dct_version), &dct_version, sizeof(platform_dct_version_t) ) == 0) &&
             /* Mark new DCT as complete */
-            (sflash_write( &sflash_handle, PLATFORM_DCT_COPY1_START_ADDRESS + OFFSETOF(platform_dct_header_t, write_incomplete), &zero_byte, sizeof( zero_byte ) ) == 0) )
+            (sflash_write_func( &sflash_handle, PLATFORM_DCT_COPY1_START_ADDRESS + OFFSETOF(platform_dct_header_t, write_incomplete), &zero_byte, sizeof( zero_byte ) ) == 0) )
         {
             deinit_sflash( &sflash_handle);
 
@@ -1147,9 +1230,13 @@ wiced_result_t wiced_dct_read_directly( void* dest, uint32_t source, uint32_t si
 {
     sflash_handle_t sflash_handle;
     wiced_result_t  result = WICED_ERROR;
+    sflash_read_t   sflash_read_func;
+
+    sflash_read_func  = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_read_secure : sflash_read;
+
     if (init_sflash( &sflash_handle, PLATFORM_SFLASH_PERIPHERAL_ID, SFLASH_WRITE_NOT_ALLOWED ) == 0)
     {
-        if (sflash_read( &sflash_handle, source, dest, size ) == 0)
+        if (sflash_read_func( &sflash_handle, source, dest, size ) == 0)
         {
             result = WICED_SUCCESS;
         }
@@ -1163,6 +1250,9 @@ wiced_result_t wiced_dct_read_with_copy( void* info_ptr, dct_section_t section, 
      uint32_t        curr_dct;
      sflash_handle_t sflash_handle;
      wiced_result_t  result = WICED_ERROR;
+     sflash_read_t  sflash_read_func;
+
+     sflash_read_func = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_read_secure : sflash_read;
 
     curr_dct = (uint32_t) wiced_dct_get_current_address( section );
     if (curr_dct == (uint32_t)GET_CURRENT_ADDRESS_FAILED)
@@ -1175,7 +1265,7 @@ wiced_result_t wiced_dct_read_with_copy( void* info_ptr, dct_section_t section, 
         return WICED_ERROR;
     }
 
-    if (sflash_read( &sflash_handle, curr_dct + offset, info_ptr, size ) == 0)
+    if (sflash_read_func( &sflash_handle, curr_dct + offset, info_ptr, size ) == 0)
     {
         result = WICED_SUCCESS;
     }
@@ -1186,8 +1276,13 @@ wiced_result_t wiced_dct_read_with_copy( void* info_ptr, dct_section_t section, 
 
 static wiced_result_t wiced_dct_copy_sflash( uint32_t dest_loc, uint32_t src_loc, uint32_t size )
 {
-    unsigned char buff[ 64 ];
+    unsigned char   buff[ DCT_SFLASH_COPY_BUFFER_SIZE_ON_STACK ];
     sflash_handle_t sflash_handle;
+    sflash_write_t  sflash_write_func;
+    sflash_read_t   sflash_read_func;
+
+    sflash_write_func  = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_write_secure : sflash_write;
+    sflash_read_func   = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_read_secure  : sflash_read;
 
     if (init_sflash( &sflash_handle, PLATFORM_SFLASH_PERIPHERAL_ID, SFLASH_WRITE_ALLOWED ) != 0)
     {
@@ -1197,12 +1292,12 @@ static wiced_result_t wiced_dct_copy_sflash( uint32_t dest_loc, uint32_t src_loc
     while ( size > 0 )
     {
         uint32_t write_size = MIN( sizeof(buff), size);
-        if (sflash_read(&sflash_handle, src_loc, buff, write_size) != 0)
+        if (sflash_read_func(&sflash_handle, src_loc, buff, write_size) != 0)
         {
             deinit_sflash( &sflash_handle);
             return WICED_ERROR;
         }
-        if (sflash_write(&sflash_handle, dest_loc, buff, write_size) != 0)
+        if (sflash_write_func(&sflash_handle, dest_loc, buff, write_size) != 0)
         {
             deinit_sflash( &sflash_handle);
             return WICED_ERROR;
@@ -1221,21 +1316,34 @@ wiced_result_t wiced_dct_erase_non_current_dct( uint32_t non_current_dct )
      uint32_t           sector_base;
      sflash_handle_t    sflash_handle;
 
-     if ( init_sflash( &sflash_handle, PLATFORM_SFLASH_PERIPHERAL_ID, SFLASH_WRITE_ALLOWED ) != 0 )
+     /* Each sector is erased before being written in case of secure sflash
+      * so no need to erase dct.
+      */
+     if (PLATFORM_SECUREDCT_ENABLED )
      {
-         return WICED_ERROR;
+         UNUSED_PARAMETER(non_current_dct);
+         UNUSED_PARAMETER(sector_base);
+         UNUSED_PARAMETER(sflash_handle);
      }
-
-     for ( sector_base = non_current_dct; sector_base < (non_current_dct + PLATFORM_DCT_COPY1_SIZE); sector_base += SECTOR_SIZE )
+     else
      {
-         if (sflash_sector_erase( &sflash_handle, sector_base ) != 0)
+         if ( init_sflash( &sflash_handle, PLATFORM_SFLASH_PERIPHERAL_ID, SFLASH_WRITE_ALLOWED ) != 0 )
          {
-             deinit_sflash( &sflash_handle );
              return WICED_ERROR;
          }
-     }
 
-     deinit_sflash( &sflash_handle );
+         for ( sector_base = non_current_dct; sector_base < (non_current_dct + PLATFORM_DCT_COPY1_SIZE); sector_base += SECTOR_SIZE )
+         {
+             if (sflash_sector_erase( &sflash_handle, sector_base ) != 0)
+             {
+                 deinit_sflash( &sflash_handle );
+                 return WICED_ERROR;
+             }
+         }
+
+         deinit_sflash( &sflash_handle );
+    }
+
      return WICED_SUCCESS;
 }
 
@@ -1245,7 +1353,6 @@ wiced_result_t wiced_dct_write_boot_details( const boot_detail_t* new_boot_detai
     platform_dct_header_t   new_dct_header;
     uint32_t                new_dct, curr_dct;
     platform_dct_version_t  new_dct_version;
-
 
     if (new_boot_details == NULL)
     {
@@ -1279,7 +1386,8 @@ wiced_result_t wiced_dct_write_boot_details( const boot_detail_t* new_boot_detai
     }
 
     /* Calculate how many bytes need to be written after the system DCT structure to the end of the DCT area */
-    bytes_to_copy = PLATFORM_DCT_COPY1_SIZE - sizeof(platform_dct_data_t);
+    bytes_to_copy = ( PLATFORM_SECUREDCT_ENABLED ) ? (PLATFORM_SECURE_DCT_COPY_SIZE - sizeof(platform_dct_data_t)) :
+            (PLATFORM_DCT_COPY1_SIZE - sizeof(platform_dct_data_t));
     if ( bytes_to_copy != 0 )
     {
         /* There is data after end of requested write - copy it from old DCT to new DCT */
@@ -1336,7 +1444,8 @@ wiced_result_t wiced_dct_write_app_location( image_location_t *new_app_location,
     }
 
     /* Calculate how many bytes need to be written after the system DCT structure to the end of the DCT area */
-    bytes_to_copy = PLATFORM_DCT_COPY1_SIZE - sizeof(platform_dct_data_t);
+    bytes_to_copy = ( PLATFORM_SECUREDCT_ENABLED ) ? (PLATFORM_SECURE_DCT_COPY_SIZE - sizeof(platform_dct_data_t)) :
+            (PLATFORM_DCT_COPY1_SIZE - sizeof(platform_dct_data_t));
     if ( bytes_to_copy != 0 )
     {
         /* There is data after end of requested write - copy it from old DCT to new DCT */
@@ -1357,10 +1466,21 @@ wiced_result_t wiced_dct_write( const void* data, dct_section_t section, uint32_
     uint32_t                bytes_to_copy;
     uint32_t                section_start = DCT_section_offsets[ section ];
     uint32_t                new_dct, curr_dct;
+    sflash_write_t          sflash_write_func = sflash_write;
+    uint32_t                platform_dct_copy1_size = PLATFORM_DCT_COPY1_SIZE;
+
+    if ( PLATFORM_SECUREDCT_ENABLED )
+    {
+        sflash_write_func = sflash_map_address_write_secure;
+        platform_dct_copy1_size = PLATFORM_SECURE_DCT_COPY_SIZE;
+
+    }
+
+    sflash_write_func  = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_write_secure : sflash_write;
 
     /* Check if the data is outside the bounds to write */
     if ( (section_start < sizeof(platform_dct_header_t)) ||
-             ((section_start + offset + data_length) > PLATFORM_DCT_COPY1_SIZE))
+             ((section_start + offset + data_length) > platform_dct_copy1_size))
     {
         return WICED_ERROR;
     }
@@ -1426,7 +1546,7 @@ wiced_result_t wiced_dct_write( const void* data, dct_section_t section, uint32_
     {
         return WICED_ERROR;
     }
-    if (sflash_write( &sflash_handle, new_dct + section_start + offset, data, data_length ) != 0)
+    if (sflash_write_func( &sflash_handle, new_dct + section_start + offset, data, data_length ) != 0)
     {
         deinit_sflash( &sflash_handle );
         return WICED_ERROR;
@@ -1434,19 +1554,20 @@ wiced_result_t wiced_dct_write( const void* data, dct_section_t section, uint32_
     deinit_sflash( &sflash_handle );
 
     /* Calculate how many bytes need to be written after the system DCT structure to the end of the DCT area */
-    if ((section != DCT_APP_SECTION) && ( bytes_to_copy != 0 ))
+    if (section != DCT_APP_SECTION)
     {
         /* There is data after end of requested write - copy it from old DCT to new DCT */
-        bytes_to_copy = PLATFORM_DCT_COPY1_SIZE - sizeof(platform_dct_data_t);
+        bytes_to_copy = platform_dct_copy1_size - sizeof(platform_dct_data_t);
         if (wiced_dct_copy_sflash( new_dct + sizeof(platform_dct_data_t), curr_dct + sizeof(platform_dct_data_t), bytes_to_copy ) != WICED_SUCCESS)
         {
             return WICED_ERROR;
         }
     }
-    else if (section == DCT_APP_SECTION)
+    else
     {
+        /* DCT_APP_SECTION */
         /* There is data after end of requested write - copy it from old DCT to new DCT */
-        bytes_to_copy = PLATFORM_DCT_COPY1_SIZE - (section_start + offset + data_length);
+        bytes_to_copy = platform_dct_copy1_size - (section_start + offset + data_length);
         if (wiced_dct_copy_sflash( new_dct + section_start + offset + data_length, curr_dct + section_start + offset + data_length, bytes_to_copy ) != WICED_SUCCESS)
         {
             return WICED_ERROR;
@@ -1488,6 +1609,9 @@ static wiced_result_t wiced_dct_load( const image_location_t* dct_location )
     uint32_t             offset;
     uint32_t             dest_loc = PLATFORM_DCT_COPY1_START_ADDRESS;
     uint8_t              buff[64];
+    sflash_write_t       sflash_write_func;
+
+    sflash_write_func  = ( PLATFORM_SECUREDCT_ENABLED ) ? sflash_map_address_write_secure : sflash_write;
 
     /* Erase the application area */
     wiced_dct_erase_non_current_dct( dest_loc );
@@ -1514,7 +1638,7 @@ static wiced_result_t wiced_dct_load( const image_location_t* dct_location )
     while ( size > 0 )
     {
         uint32_t write_size = MIN(sizeof(buff), size);
-        if (wiced_apps_read( dct_location, buff, offset, write_size) != 0)
+        if (wiced_apps_read( dct_location, buff, offset, write_size) == WICED_SUCCESS)
         {
             sflash_handle_t      sflash_handle;
 
@@ -1523,11 +1647,12 @@ static wiced_result_t wiced_dct_load( const image_location_t* dct_location )
             {
                 return WICED_ERROR;
             }
-            if ( sflash_write( &sflash_handle, dest_loc, buff, write_size ) != 0)
+            if ( sflash_write_func( &sflash_handle, dest_loc, buff, write_size ) != 0)
             {
                 deinit_sflash( &sflash_handle );
                 return WICED_ERROR;
             }
+            deinit_sflash( &sflash_handle );
         }
 
         offset   += write_size;

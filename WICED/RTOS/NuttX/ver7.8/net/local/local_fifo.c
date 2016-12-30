@@ -80,8 +80,17 @@
 static inline void local_cs_name(FAR struct local_conn_s *conn,
                                  FAR char *path)
 {
-  (void)snprintf(path, LOCAL_FULLPATH_LEN-1, "%s" LOCAL_CS_SUFFIX,
+  if (conn->lc_instance_id < 0)
+    {
+      (void)snprintf(path, LOCAL_FULLPATH_LEN-1, "%s" LOCAL_CS_SUFFIX,
                  conn->lc_path);
+    }
+  else
+    {
+      (void)snprintf(path, LOCAL_FULLPATH_LEN-1, "%s" LOCAL_CS_SUFFIX "%x",
+                     conn->lc_path, conn->lc_instance_id);
+    }
+
   path[LOCAL_FULLPATH_LEN-1] = '\0';
 }
 #endif /* CONFIG_NET_LOCAL_STREAM */
@@ -98,8 +107,17 @@ static inline void local_cs_name(FAR struct local_conn_s *conn,
 static inline void local_sc_name(FAR struct local_conn_s *conn,
                                  FAR char *path)
 {
-  (void)snprintf(path, LOCAL_FULLPATH_LEN-1, "%s" LOCAL_SC_SUFFIX,
+  if (conn->lc_instance_id < 0)
+    {
+      (void)snprintf(path, LOCAL_FULLPATH_LEN-1, "%s" LOCAL_SC_SUFFIX,
                  conn->lc_path);
+    }
+  else
+    {
+      (void)snprintf(path, LOCAL_FULLPATH_LEN-1, "%s" LOCAL_SC_SUFFIX "%x",
+                     conn->lc_path, conn->lc_instance_id);
+    }
+
   path[LOCAL_FULLPATH_LEN-1] = '\0';
 }
 #endif /* CONFIG_NET_LOCAL_STREAM */
@@ -168,7 +186,7 @@ static int local_create_fifo(FAR const char *path)
       ret = mkfifo(path, 0644);
       if (ret < 0)
         {
-          int errcode = errno;
+          int errcode = get_errno();
           DEBUGASSERT(errcode > 0);
 
           ndbg("ERROR: Failed to create FIFO %s: %d\n", path, errcode);
@@ -209,7 +227,7 @@ static int local_release_fifo(FAR const char *path)
       ret = unlink(path);
       if (ret < 0)
         {
-          int errcode = errno;
+          int errcode = get_errno();
           DEBUGASSERT(errcode > 0);
 
           ndbg("ERROR: Failed to unlink FIFO %s: %d\n", path, errcode);
@@ -239,7 +257,7 @@ static int local_rx_open(FAR struct local_conn_s *conn, FAR const char *path,
   conn->lc_infd = open(path, oflags);
   if (conn->lc_infd < 0)
     {
-      int errcode = errno;
+      int errcode = get_errno();
       DEBUGASSERT(errcode > 0);
 
       ndbg("ERROR: Failed on open %s for reading: %d\n",
@@ -275,7 +293,7 @@ static int local_tx_open(FAR struct local_conn_s *conn, FAR const char *path,
   conn->lc_outfd = open(path, oflags);
   if (conn->lc_outfd < 0)
     {
-      int errcode = errno;
+      int errcode = get_errno();
       DEBUGASSERT(errcode > 0);
 
       ndbg("ERROR: Failed on open %s for writing: %d\n",

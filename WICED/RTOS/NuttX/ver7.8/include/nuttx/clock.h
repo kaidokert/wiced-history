@@ -98,16 +98,25 @@
 
 /* Timing constants *********************************************************/
 
-#define NSEC_PER_SEC          1000000000
-#define USEC_PER_SEC             1000000
-#define MSEC_PER_SEC                1000
-#define DSEC_PER_SEC                  10
-#define NSEC_PER_DSEC          100000000
-#define USEC_PER_DSEC             100000
-#define MSEC_PER_DSEC                100
-#define NSEC_PER_MSEC            1000000
-#define USEC_PER_MSEC               1000
-#define NSEC_PER_USEC               1000
+#define NSEC_PER_SEC          1000000000L /* Seconds */
+#define USEC_PER_SEC             1000000L
+#define MSEC_PER_SEC                1000L
+#define DSEC_PER_SEC                  10L
+#define HSEC_PER_SEC                   2L
+
+#define NSEC_PER_HSEC          500000000L /* Half seconds */
+#define USEC_PER_HSEC             500000L
+#define MSEC_PER_HSEC                500L
+#define DSEC_PER_HSEC                  5L
+
+#define NSEC_PER_DSEC          100000000L /* Deciseconds */
+#define USEC_PER_DSEC             100000L
+#define MSEC_PER_DSEC                100L
+
+#define NSEC_PER_MSEC            1000000L /* Milliseconds */
+#define USEC_PER_MSEC               1000L
+
+#define NSEC_PER_USEC               1000L /* Microseconds */
 
 /* If CONFIG_SCHED_TICKLESS is not defined, then the interrupt interval of
  * the system timer is given by USEC_PER_TICK.  This is the expected number
@@ -135,6 +144,7 @@
  */
 
 #define TICK_PER_DSEC         (USEC_PER_DSEC / USEC_PER_TICK)            /* Truncates! */
+#define TICK_PER_HSEC         (USEC_PER_HSEC / USEC_PER_TICK)            /* Truncates! */
 #define TICK_PER_SEC          (USEC_PER_SEC  / USEC_PER_TICK)            /* Truncates! */
 #define TICK_PER_MSEC         (USEC_PER_MSEC / USEC_PER_TICK)            /* Truncates! */
 #define MSEC_PER_TICK         (USEC_PER_TICK / USEC_PER_MSEC)            /* Truncates! */
@@ -146,10 +156,11 @@
 #if (MSEC_PER_TICK * USEC_PER_MSEC) == USEC_PER_TICK
 #  define MSEC2TICK(msec)     (((msec)+(MSEC_PER_TICK/2))/MSEC_PER_TICK) /* Rounds */
 #else
-#  define MSEC2TICK(msec)     USEC2TICK(msec * 1000)                     /* Rounds */
+#  define MSEC2TICK(msec)     USEC2TICK((msec) * USEC_PER_MSEC)          /* Rounds */
 #endif
 
 #define DSEC2TICK(dsec)       MSEC2TICK((dsec) * MSEC_PER_DSEC)          /* Rounds */
+#define HSEC2TICK(dsec)       MSEC2TICK((dsec) * MSEC_PER_HSEC)          /* Rounds */
 #define SEC2TICK(sec)         MSEC2TICK((sec)  * MSEC_PER_SEC)           /* Rounds */
 
 #define TICK2NSEC(tick)       ((tick) * NSEC_PER_TICK)                   /* Exact */
@@ -162,6 +173,7 @@
 #endif
 
 #define TICK2DSEC(tick)       (((tick)+(TICK_PER_DSEC/2))/TICK_PER_DSEC) /* Rounds */
+#define TICK2HSEC(tick)       (((tick)+(TICK_PER_HSEC/2))/TICK_PER_HSEC) /* Rounds */
 #define TICK2SEC(tick)        (((tick)+(TICK_PER_SEC/2))/TICK_PER_SEC)   /* Rounds */
 
 /****************************************************************************
@@ -177,9 +189,25 @@ struct cpuload_s
 };
 #endif
 
+/* This type is the natural with of the system timer */
+
+#ifdef CONFIG_SYSTEM_TIME64
+typedef uint64_t systime_t;
+#else
+typedef uint32_t systime_t;
+#endif
+
 /****************************************************************************
  * Public Data
  ****************************************************************************/
+
+#ifdef __cplusplus
+#define EXTERN extern "C"
+extern "C"
+{
+#else
+#define EXTERN extern
+#endif
 
 /* Access to raw system clock ***********************************************/
 /* Direct access to the system timer/counter is supported only if (1) the
@@ -206,14 +234,6 @@ extern volatile uint32_t g_system_timer;
 /****************************************************************************
  * Public Function Prototypes
  ****************************************************************************/
-
-#ifdef __cplusplus
-#define EXTERN extern "C"
-extern "C"
-{
-#else
-#define EXTERN extern
-#endif
 
 /****************************************************************************
  * Function:  clock_synchronize

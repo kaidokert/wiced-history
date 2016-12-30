@@ -1,6 +1,49 @@
 =====================================================================
-Broadcom WICED Software Development Kit - CHANGELOG
+Cypress WICED Software Development Kit - CHANGELOG
 =====================================================================
+
+Changes for WICED-SDK 4.0.1
+* Applications
+  * Homekit applications
+    * Corrected event notifications in Homekit snippet apps to be sent to the controller whenever characeristics' value changes.
+    * Fix for WAC failure with snip.apple_homekit.lock_mechanism_service application
+    * Resolved pairing issue with Homekit certification app on BCM9WCDPLUS114 platform
+  * Bluetooth audio application
+   * Resolved absolute volume control issue with Bluetooth audio app when connected to iOS/Android smartphones
+   * Fixed MMI issue with forward/backward AVRCP operations during Bluetooth A2DP streaming with smartphones
+* Libraries, Protocols, Drivers
+  * Added provision to the MQT library to support reconnection whenever connection is lost
+  * Homekit enhancements and bug-fixes
+    * Added support for multiple controllers to communicate with the accessory using single Apple ID
+    * Added additional error checking in Homekit start API for robustness
+  * AMQP v1.0 stability fixes during send/receive
+  * OTA2 Failsafe
+    * Added a failsafe mechanism to the OTA2 extraction process
+    * waf.ota2_failsafe is now automatically built with the waf.ota2_bootloader for OTA2_SUPPORT
+    * If an extraction is interrupted due to reset or power cycle, the system will recover 
+  * Added support for 30KB ping reception and 10KB ping transmission on 43364 and 4343W platforms for 802.11n Certification
+
+Changes for WICED-SDK 4.0
+* Applications
+  * New rewritten WICED Audio Player - demo.audio_player, supersedes snip.audio_player, snip.flac
+  * New Wi-Fi Connection Manager API and Sample application framework (snip.wifi_connection_manager)
+  * Documentation and API Enhancements
+* Libraries, Protocols, Drivers
+  * Integrated Bluetooth embedded stack support for BCM20706A2 chips (when used in conjunction with the BCM43907 SoC)
+  * Support for AMQP v1.0
+  * Stability fixes (including resolution to memory leaks) to BESL TLS and DTLS libraries
+  * Homekit enhancements
+  * Enterprise security support on BCM4390x platforms
+   * Support for EAP-TLS Enterprise security protocol with SteelBelt, FreeRadius, IAS, ACS and Device
+   * Support for PEAPv0 Enterprise security protocol with SteelBelt, FreeRadius and Device
+  * Added support for NuttX RTOS. Currently this is supported on 4390X platforms only
+  * Added support for Cypress FM4 MCU
+  * Added AAC Audio Decoder (supporting iTunes M4A Audio files)
+  * AK4961 DSP Driver enhancement for using integrated DSP on AK4961 for post-processing
+  * New wiced console logging API for syslog style event logging
+  * New WLAN firmware 7.15.168.76 for 4390x
+  * New WLAN firmware 5.90.230.15 for 43362
+  * New WLAN firmware 7.45.98.4 for 43364, 4343X
 
 Changes for WICED-SDK 3.7.0
 * Applications
@@ -467,7 +510,7 @@ The accompanying README provides a more detailed summary of the supported
 features and known limitations for this release.
 
 The following is a brief summary of the major changes:
-* Support for various Broadcom Wi-Fi & combo chips
+* Support for various Cypress Wi-Fi & combo chips
   * BCM43362 Wi-Fi SoC
   * BCM4390 Integrated Apps + Wi-Fi SoC
   * BCM43341 Wi-Fi + Bluetooth combo SoC

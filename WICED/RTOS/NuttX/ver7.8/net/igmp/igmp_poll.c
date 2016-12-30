@@ -147,7 +147,7 @@ void igmp_poll(FAR struct net_driver_s *dev)
 {
   FAR struct igmp_group_s *group;
 
-  nllvdbg("Entry\n");
+  // nllvdbg("Entry\n");
 
   /* Setup the poll operation */
 

@@ -51,7 +51,9 @@
 #include "tcp/tcp.h"
 #include "udp/udp.h"
 #include "pkt/pkt.h"
+#include "rts/rts.h"
 #include "local/local.h"
+#include "sched/sched/sched.h"
 
 /****************************************************************************
  * Private Functions
@@ -121,7 +123,6 @@ static int psock_udp_alloc(FAR struct socket *psock)
   conn->crefs = 1;
 
   /* Save the pre-allocated connection in the socket structure */
-
   psock->s_conn = conn;
   return OK;
 }
@@ -163,6 +164,43 @@ static int psock_pkt_alloc(FAR struct socket *psock)
   return OK;
 }
 #endif /* CONFIG_NET_PKT */
+
+/****************************************************************************
+ * Name: psock_rts_alloc
+ *
+ * Description:
+ *   Allocate and attach a raw packet connection structure.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_RTS
+static int psock_rts_alloc(FAR struct socket *psock)
+{
+  /* Allocate the packet socket connection structure and save in the new
+   * socket instance.
+   */
+
+  FAR struct rts_conn_s *conn = rts_alloc();
+  if (!conn)
+    {
+      /* Failed to reserve a connection structure */
+
+      return -ENOMEM;
+    }
+
+  /* Set the reference count on the connection structure.  This reference
+   * count will be incremented only if the socket is dup'ed
+   */
+
+  DEBUGASSERT(conn->crefs == 0);
+  conn->crefs = 1;
+
+  /* Save the pre-allocated connection in the socket structure */
+
+  psock->s_conn = conn;
+  return OK;
+}
+#endif /* CONFIG_NET_RTS */
 
 /****************************************************************************
  * Name: psock_local_alloc
@@ -247,6 +285,9 @@ int psock_socket(int domain, int type, int protocol, FAR struct socket *psock)
   bool ipdomain = false;
 #endif
   bool dgramok  = false;
+#ifdef CONFIG_NET_RTS
+  bool rtsdomain = false;
+#endif
   int ret;
   int err;
 
@@ -254,6 +295,11 @@ int psock_socket(int domain, int type, int protocol, FAR struct socket *psock)
 
   switch (domain)
     {
+#ifdef CONFIG_NET_RTS
+    case PF_ROUTE:
+       rtsdomain = true;
+       break;
+#endif
 #ifdef CONFIG_NET_IPv4
     case PF_INET:
 #ifdef CONFIG_NET_LOCAL
@@ -288,7 +334,7 @@ int psock_socket(int domain, int type, int protocol, FAR struct socket *psock)
       goto errout;
     }
 
-#if !defined(CONFIG_NET_TCP) && !defined(CONFIG_NET_UDP)
+#if defined(CONFIG_NET_LOCAL) && !defined(CONFIG_NET_LOCAL_STREAM) && !defined(CONFIG_NET_LOCAL_DGRAM)
   UNUSED(ipdomain);
 #endif
 
@@ -358,16 +404,22 @@ int psock_socket(int domain, int type, int protocol, FAR struct socket *psock)
         break;
 #endif /* CONFIG_NET_UDP || CONFIG_NET_LOCAL_DGRAM */
 
-#ifdef CONFIG_NET_PKT
+#if defined(CONFIG_NET_PKT) || defined(CONFIG_NET_RTS)
       case SOCK_RAW:
+#ifdef CONFIG_NET_RTS
+        if (rtsdomain)
+            break;
+#endif 
+
+#ifdef CONFIG_NET_PKT       
         if (dgramok)
           {
             err = EPROTONOSUPPORT;
             goto errout;
           }
-
-        break;
 #endif
+        break;
+#endif /* defined(CONFIG_NET_PKT) || defined(CONFIG_NET_RTS) */
 
       default:
         err = EPROTONOSUPPORT;
@@ -468,20 +520,40 @@ int psock_socket(int domain, int type, int protocol, FAR struct socket *psock)
         break;
 #endif
 
-#ifdef CONFIG_NET_PKT
+#if defined(CONFIG_NET_PKT) || defined(CONFIG_NET_RTS)
       case SOCK_RAW:
         {
-          ret = psock_pkt_alloc(psock);
-          if (ret < 0)
+#ifdef CONFIG_NET_RTS
+          if (rtsdomain)
             {
-              /* Failed to reserve a connection structure */
-
-              err = -ret;
-              goto errout;
+              ret = psock_rts_alloc(psock);
+              if (ret < 0)
+                {
+                  /* Failed to reserve a AF_ROUTE connection structure */
+                  err = -ret;
+                  goto errout;                  
+                }
             }
+#endif /* CONFIG_NET_RTS */
+
+#ifdef CONFIG_NET_PKT
+#ifdef CONFIG_NET_RTS
+          else
+#endif
+            {
+              ret = psock_pkt_alloc(psock);
+              if (ret < 0)
+                {
+                  /* Failed to reserve a connection structure */
+
+                  err = -ret;
+                  goto errout;
+                }
+            }
+#endif /* CONFIG_NET_PKT */
         }
         break;
-#endif
+#endif /* CONFIG_NET_PKT || CONFIG_NET_RTS */
 
       default:
         break;

@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 #include <string.h>  /* For memcpy */
@@ -58,6 +81,14 @@
                                                 ( ( ( uint32_t ) ( x ) & ( uint32_t ) 0x0000ff00U ) >> 8 ) | \
                                                 ( ( ( uint32_t ) ( x ) & ( uint32_t ) 0x00ff0000U ) << 8 ) | \
                                                 ( ( ( uint32_t ) ( x ) & ( uint32_t ) 0xff000000U ) >> 8 ) ) )
+
+#ifndef WWD_THREAD_POLL_TIMEOUT
+#define WWD_THREAD_POLL_TIMEOUT      (NEVER_TIMEOUT)
+#endif /* WWD_THREAD_POLL_TIMEOUT */
+
+#ifndef WWD_THREAD_POKE_TIMEOUT
+#define WWD_THREAD_POKE_TIMEOUT      (100)
+#endif /* WWD_THREAD_POKE_TIMEOUT */
 
 typedef enum
 {
@@ -167,6 +198,10 @@ wwd_result_t wwd_bus_send_buffer( wiced_buffer_t buffer )
 {
     wwd_result_t result = wwd_bus_transfer_buffer( BUS_WRITE, WLAN_FUNCTION, 0, buffer );
     host_buffer_release( buffer, WWD_NETWORK_TX );
+    if ( result == WWD_SUCCESS )
+    {
+        DELAYED_BUS_RELEASE_SCHEDULE( WICED_TRUE );
+    }
     return result;
 }
 
@@ -371,6 +406,7 @@ return_with_error:
         return result;
     }
 
+    DELAYED_BUS_RELEASE_SCHEDULE( WICED_TRUE );
     return WWD_SUCCESS;
 }
 
@@ -474,17 +510,23 @@ wwd_result_t wwd_bus_init( void )
 
     /* Download the firmware */
     result = wwd_download_firmware( );
+
+    /* user abort */
     if ( result == WWD_UNFINISHED )
     {
         host_platform_reset_wifi( WICED_TRUE );
         host_platform_power_wifi( WICED_FALSE );
+        WPRINT_WWD_INFO(("User aborted download of firmware\n"));
+        return result;
     }
 
+    /* non user abort error */
     if ( result != WWD_SUCCESS )
     {
         WPRINT_WWD_ERROR(("Could not download firmware\n"));
         return result;
     }
+    /* else, successfully downloaded the firmware; continue with waiting for WIFi to live */
 
     /* Wait for F2 to be ready */
     loop_count = 0;
@@ -519,8 +561,49 @@ wwd_result_t wwd_bus_deinit( void )
     /* put device in reset. */
     host_platform_reset_wifi( WICED_TRUE );
     wwd_bus_set_resource_download_halt( WICED_FALSE );
-
+    DELAYED_BUS_RELEASE_SCHEDULE( WICED_FALSE );
     return WWD_SUCCESS;
+}
+
+void wwd_wait_for_wlan_event( host_semaphore_type_t* transceive_semaphore )
+{
+    wwd_result_t result = WWD_SUCCESS;
+    uint32_t timeout_ms = 1;
+    uint32_t delayed_release_timeout_ms;
+
+    REFERENCE_DEBUG_ONLY_VARIABLE( result );
+
+    delayed_release_timeout_ms = wwd_bus_handle_delayed_release( );
+    if ( delayed_release_timeout_ms != 0 )
+    {
+        timeout_ms = delayed_release_timeout_ms;
+    }
+    else
+    {
+        result = wwd_allow_wlan_bus_to_sleep( );
+        wiced_assert( "Error setting wlan sleep", ( result == WWD_SUCCESS ) || ( result == WWD_PENDING ) );
+
+        if ( result == WWD_SUCCESS )
+        {
+            timeout_ms = NEVER_TIMEOUT;
+        }
+    }
+
+    /* Check if we have run out of bus credits */
+    if ( wwd_sdpcm_get_available_credits( ) == 0 )
+    {
+        /* Keep poking the WLAN until it gives us more credits */
+        result = wwd_bus_poke_wlan( );
+        wiced_assert( "Poking failed!", result == WWD_SUCCESS );
+
+        result = host_rtos_get_semaphore( transceive_semaphore, (uint32_t) MIN( timeout_ms, WWD_THREAD_POKE_TIMEOUT ), WICED_FALSE );
+    }
+    else
+    {
+        result = host_rtos_get_semaphore( transceive_semaphore, (uint32_t) MIN( timeout_ms, WWD_THREAD_POLL_TIMEOUT ), WICED_FALSE );
+    }
+    wiced_assert("Could not get wwd sleep semaphore\n", ( result == WWD_SUCCESS)||(result == WWD_TIMEOUT ) );
+
 }
 
 /******************************************************

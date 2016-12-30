@@ -44,6 +44,7 @@
 #include "tcp/tcp.h"
 #include "udp/udp.h"
 #include "local/local.h"
+#include "rts/rts.h"
 #include "socket/socket.h"
 
 #if defined(CONFIG_NET) && !defined(CONFIG_DISABLE_POLL)
@@ -86,6 +87,14 @@
 static inline int net_pollsetup(FAR struct socket *psock,
                                 FAR struct pollfd *fds)
 {
+    
+#ifdef CONFIG_NET_RTS
+  if (psock->s_type == SOCK_RAW && psock->s_domain == PF_ROUTE)
+    {
+      return rts_pollsetup(psock, fds);  
+    }
+#endif
+
 #if defined(HAVE_TCP_POLL) || defined(HAVE_LOCAL_POLL)
   if (psock->s_type == SOCK_STREAM)
     {
@@ -154,6 +163,13 @@ static inline int net_pollsetup(FAR struct socket *psock,
 static inline int net_pollteardown(FAR struct socket *psock,
                                    FAR struct pollfd *fds)
 {
+#ifdef CONFIG_NET_RTS
+  if (psock->s_type == SOCK_RAW && psock->s_domain == PF_ROUTE)
+    {
+      return rts_pollteardown(psock, fds);  
+    }
+#endif
+
 #if defined(HAVE_TCP_POLL) || defined(HAVE_LOCAL_POLL)
   if (psock->s_type == SOCK_STREAM)
     {

@@ -1,11 +1,34 @@
 /**
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -146,6 +169,81 @@ wiced_result_t bt_mfgtest_start( const wiced_uart_config_t* config )
     return WICED_BT_SUCCESS;
 }
 
+
+wiced_result_t bt_mfgtest_console_start( const wiced_uart_config_t* config )
+{
+    wiced_result_t result;
+
+    WPRINT_LIB_INFO(( "bt_mfgtest_console_start!\n"));
+
+    result = bt_bus_init();
+    if ( result != WICED_BT_SUCCESS )
+    {
+        WPRINT_LIB_ERROR( ( "Error initialising BT bus\n" ) );
+        return result;
+    }
+
+    return WICED_BT_SUCCESS;
+}
+
+wiced_result_t bt_mfgtest_console_download_fw()
+{
+    wiced_result_t result;
+
+    WPRINT_LIB_INFO(( "bt_mfgtest_console_download_fw!\n"));
+
+    result = bt_firmware_download_lowrate( brcm_patchram_buf, brcm_patch_ram_length, brcm_patch_version );
+    if ( result != WICED_BT_SUCCESS )
+    {
+        WPRINT_LIB_ERROR( ( "Error downloading HCI firmware\n" ) );
+        return result;
+    }
+
+    return WICED_BT_SUCCESS;
+}
+
+wiced_result_t bt_mfgtest_console_send_hci( uint8_t *cmd, uint8_t len, \
+                                            uint8_t *res, uint8_t res_len )
+{
+    hci_event_extended_header_t hci_event;
+    char hci_command[20];
+    char hci_response[256];
+    uint8_t index = 0;
+    wiced_result_t status = WICED_BT_ERROR;
+
+    for (index = 0 ; index < len ; index++)
+    {
+        hci_command[index] = *(cmd+index);
+    }
+
+    bt_bus_transmit( (const uint8_t* ) hci_command, len );
+    /* First reset command requires extra delay between write and read */
+    bt_bus_receive( (uint8_t* ) &hci_event, sizeof( hci_event ), 1000 );
+
+    if (hci_event.header.content_length > 4)
+    {
+        bt_bus_receive( (uint8_t* ) &hci_response, hci_event.header.content_length - 4, 1000 );
+    }
+
+    if (memcmp(&hci_event, res, 7) == 0)
+    {
+        status = WICED_BT_SUCCESS;
+    }
+    else
+    {
+        status = WICED_BT_ERROR;
+    }
+
+    return status;
+}
+
+wiced_result_t bt_mfgtest_console_receive_hci( uint8_t *read_data, uint8_t len)
+{
+    wiced_result_t result;
+
+    result = bt_bus_receive( read_data, len, 1000 );
+    return result;
+}
 
 static wiced_result_t bt_mfgtest_transport_driver_event_handler( bt_transport_driver_event_t event )
 {

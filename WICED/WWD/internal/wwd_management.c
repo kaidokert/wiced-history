@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -28,7 +51,8 @@
 #include "internal/wwd_internal.h"
 #include "internal/wwd_thread.h"
 #include "internal/bus_protocols/wwd_bus_protocol_interface.h"
-
+#include <wwd_constants.h>
+#include <platform_toolchain.h>
 
 /******************************************************
  *             Constants
@@ -64,14 +88,14 @@ wwd_result_t wwd_management_wifi_platform_init( wiced_country_code_t country, wi
     retval = (wwd_result_t)host_platform_init( );
     if ( retval != WWD_SUCCESS )
     {
-        WPRINT_WWD_ERROR(("Could not initialize platform interface\n"));
+        WPRINT_WWD_INFO(("Could not initialize platform interface\n"));
         return retval;
     }
 
     retval = (wwd_result_t)host_platform_bus_init( );
     if ( retval != WWD_SUCCESS )
     {
-        WPRINT_WWD_ERROR(("Could not initialize platform bus interface\n"));
+        WPRINT_WWD_INFO(("Could not initialize platform bus interface\n"));
         return retval;
     }
 
@@ -83,12 +107,14 @@ wwd_result_t wwd_management_wifi_platform_init( wiced_country_code_t country, wi
     }
     else
     {
+        wwd_bus_init_stats( );
         retval = ( wwd_result_t ) wwd_bus_init( );
     }
 
     if ( retval != WWD_SUCCESS )
     {
-        WPRINT_WWD_ERROR(("Could not initialize bus\n"));
+        /* May have been due to user abort */
+        WPRINT_WWD_INFO(("Could not initialize bus\n"));
         return retval;
     }
 
@@ -113,6 +139,25 @@ wwd_result_t wwd_management_wifi_platform_init( wiced_country_code_t country, wi
 wwd_result_t wwd_management_wifi_platform_init_halt( wiced_bool_t halt )
 {
     wwd_bus_set_resource_download_halt( halt );
+    return WWD_SUCCESS;
+}
+
+/* All platforms support mpc unless they override this function. */
+WEAK wiced_bool_t host_platform_supports_mpc( void )
+{
+    return WICED_TRUE;
+}
+
+/*
+* Query platform to see if mpc should be on or off and configure appropriately.
+*/
+wwd_result_t wwd_management_wifi_plaform_mpc_init( void )
+{
+    if ( WICED_FALSE == host_platform_supports_mpc( ) )
+    {
+        return wwd_wifi_disable_minimum_power_consumption( );
+    }
+    /* Firmware defaults to ON */
     return WWD_SUCCESS;
 }
 
@@ -146,10 +191,12 @@ wwd_result_t wwd_management_wifi_on( wiced_country_code_t country )
         return WWD_SUCCESS;
     }
 
+    wwd_init_stats();
+
     retval = wwd_management_wifi_platform_init( country, WICED_FALSE );
     if ( retval != WWD_SUCCESS )
     {
-        WPRINT_WWD_ERROR(("Could not initialize"));
+        WPRINT_WWD_INFO(("Could not initialize wifi platform\n"));
         return retval;
     }
 
@@ -239,6 +286,26 @@ wwd_result_t wwd_management_wifi_on( wiced_country_code_t country )
      *
      */
 #ifdef WICED_ENABLE_AUTO_COUNTRY
+    country_struct = (wl_country_t*) wwd_sdpcm_get_iovar_buffer( &buffer, (uint16_t) sizeof(wl_country_t), IOVAR_STR_COUNTRY );
+    if ( country_struct == NULL )
+    {
+        wiced_assert( "Could not get buffer for IOCTL", 0 != 0 );
+        return WWD_BUFFER_ALLOC_FAIL;
+    }
+    /* Set aggregate cc/regrev at load time only */
+    memset(country_struct, 0, sizeof(wl_country_t));
+    ptr  = (uint32_t*)country_struct->ccode;
+    *ptr = (uint32_t) wwd_wlan_status.aggregate_code & 0x0000ffff;
+    memcpy( country_struct->country_abbrev, "agg", WLC_CNTRY_BUF_SZ );
+    country_struct->rev = (int32_t) ( ( wwd_wlan_status.aggregate_code & 0xffff0000 ) >> 16 );
+
+    retval = wwd_sdpcm_send_iovar( SDPCM_SET, buffer, 0, WWD_STA_INTERFACE );
+    if ( retval != WWD_SUCCESS )
+    {
+        /* Could not set wifi aggregate */
+        WPRINT_WWD_ERROR(("Could not set aggregate code\n"));
+        return retval;
+    }
     /* Turn auto country on */
     retval = wwd_wifi_set_iovar_value( IOVAR_STR_AUTOCOUNTRY, 1, WWD_STA_INTERFACE );
     if( retval != WWD_SUCCESS )
@@ -368,3 +435,9 @@ void wwd_set_country( wiced_country_code_t code )
 {
     wwd_wlan_status.country_code = code;
 }
+#ifdef WICED_ENABLE_AUTO_COUNTRY
+void wwd_set_aggregate( wiced_aggregate_code_t code )
+{
+    wwd_wlan_status.aggregate_code = code;
+}
+#endif /* WICED_ENABLE_AUTO_COUNTRY */

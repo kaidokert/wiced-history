@@ -178,18 +178,19 @@ typedef struct
 **  external function declarations
 *****************************************************************************/
 /**
- * @addtogroup  wicedbt_av          Audio / Video
- * @ingroup     wicedbt_av
  *
- * Audio Video Profiles
+ * @defgroup wicedbt_av  Audio/Video
+ * @ingroup  wicedbt
  *
- * @{
-*/
-
-
-/**
- * @addtogroup  wicedbt_avrc        Audio / Video Remote Control (AVRCP)
- * @ingroup     wicedbt_av
+ * @defgroup wicedbt_av_helper Audio/Video Helper Functions
+ * @ingroup  wicedbt_av
+ *
+ * @defgroup wicedbt_avrc_helper Audio/Video Remote Control (AVRCP)
+ * @ingroup  wicedbt_av_helper
+ *
+ * @addtogroup  wicedbt_avrc_helper        Audio / Video Helper Functions
+ * @ingroup     wicedbt_av_helper
+ * @ingroup     wicedbt
  *
  * Audio/Video Remote Control
  *

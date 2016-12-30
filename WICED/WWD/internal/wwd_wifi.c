@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -45,6 +68,10 @@
 #define DOT11_CAP_IBSS                    (0x0002)   /** Ad-hoc capability (Independent Basic Service Set) */
 #define DOT11_CAP_PRIVACY                 (0x0010)   /** Privacy subfield - indicates data confidentiality is required for all data frames exchanged */
 #define WL_CHANSPEC_CHAN_MASK             (0x00ff)
+#define CHSPEC_CHANNEL(chspec)            ((uint8_t)((chspec) & WL_CHANSPEC_CHAN_MASK))
+#define CH20MHZ_CHSPEC(channel)           (chanspec_t)((chanspec_t)(channel) | WL_CHANSPEC_BW_20 | \
+                                            WL_CHANSPEC_CTL_SB_NONE | (((channel) <= CH_MAX_2G_CHANNEL) ? \
+                                            WL_CHANSPEC_BAND_2G : WL_CHANSPEC_BAND_5G))
 #define LEGACY_WL_BSS_INFO_VERSION           (107)   /** older version of wl_bss_info struct */
 
 #define WICED_CREDENTIAL_TEST_TIMEOUT     (1500)
@@ -70,8 +97,11 @@
 #define DEFAULT_EAPOL_KEY_PACKET_TIMEOUT (2500) /* Timeout when waiting for EAPOL key packet M1 or M3 in milliseconds. Some APs may be slow to provide M1 and 1000 ms is not long enough for edge of cell. */
 
 #ifndef DEFAULT_PM2_SLEEP_RET_TIME
-#define DEFAULT_PM2_SLEEP_RET_TIME   (40)
+#define DEFAULT_PM2_SLEEP_RET_TIME   (200)
 #endif
+
+#define PM2_SLEEP_RET_TIME_MIN       (10)   /* Minimum return-to-sleep in milliseconds */
+#define PM2_SLEEP_RET_TIME_MAX       (2000) /* Maximum return-to-sleep in milliseconds */
 
 #define NULL_FRAMES_WITH_PM_SET_LIMIT ( 100 )
 
@@ -139,7 +169,8 @@ static uint32_t              WICED_DEEP_SLEEP_SAVED_VAR( wiced_join_status[WWD_I
 
 /* LOOK: !!!When adding events below, please modify wwd_event_to_string!!! */
 const wwd_event_num_t        join_events[]  = { WLC_E_SET_SSID, WLC_E_LINK, WLC_E_AUTH, WLC_E_DEAUTH_IND, WLC_E_DISASSOC_IND, WLC_E_PSK_SUP, WLC_E_CSA_COMPLETE_IND, WLC_E_NONE };
-static const wwd_event_num_t scan_events[]  = { WLC_E_ESCAN_RESULT, WLC_E_PFN_NET_FOUND, WLC_E_NONE };
+static const wwd_event_num_t scan_events[]  = { WLC_E_ESCAN_RESULT, WLC_E_NONE };
+static const wwd_event_num_t pno_events[]   = { WLC_E_PFN_NET_FOUND, WLC_E_NONE };
 static const wwd_event_num_t rrm_events[]   = { WLC_E_RRM, WLC_E_NONE };
 
 static uint8_t  wiced_wifi_powersave_mode = NO_POWERSAVE_MODE;
@@ -147,6 +178,16 @@ static uint16_t wiced_wifi_return_to_sleep_delay;
 
 /* Note: monitor_mode_enabled variable is accessed by SDPCM */
 static wiced_bool_t wwd_sdpcm_monitor_mode_enabled = WICED_FALSE;
+
+/* The semaphore used to wait for completion of a join; wwd_wifi_join_halt uses this to release waiting threads (if any) */
+static host_semaphore_type_t* WICED_DEEP_SLEEP_SAVED_VAR( active_join_semaphore ) = NULL;
+
+/* protect multi-threaded access of above semaphore pointer */
+static host_semaphore_type_t  WICED_DEEP_SLEEP_SAVED_VAR( active_join_mutex );
+static volatile wiced_bool_t  WICED_DEEP_SLEEP_SAVED_VAR( active_join_mutex_initted ) = WICED_FALSE;
+
+/* track whether joins are all halted per the wwd_wifi_join_halt API */
+static volatile wiced_bool_t  WICED_DEEP_SLEEP_SAVED_VAR( join_halt_triggered ) = WICED_FALSE;
 
 wiced_bool_t wwd_wifi_p2p_go_is_up = WICED_FALSE;
 
@@ -210,9 +251,9 @@ static            wwd_result_t    wwd_wifi_get_packet_filters_inner ( uint32_t m
 static            wwd_result_t    wwd_wifi_set_band_specific_rate   ( wwd_interface_t interface, uint32_t rate );
 static            wwd_result_t    wwd_wifi_check_join_status        ( wwd_interface_t interface );
 static            tlv8_header_t*  wwd_parse_dot11_tlvs              ( const tlv8_header_t* tlv_buf, uint32_t buflen, dot11_ie_id_t key );
-static            wwd_result_t    wwd_wifi_set_iovar_buffer( const char* iovar, void *buffer, uint16_t buffer_length, wwd_interface_t interface );
-static            wwd_result_t    wwd_wifi_set_iovar_void( const char* iovar, wwd_interface_t interface );
 static            wwd_result_t    wwd_wifi_pno_set_enable( wiced_bool_t enable );
+static            void            wwd_wifi_active_join_deinit ( host_semaphore_type_t *stack_semaphore, wwd_result_t result, host_semaphore_type_t *client_semaphore );
+static            wwd_result_t    wwd_wifi_active_join_init         ( wiced_security_t auth_type, const uint8_t* security_key, uint8_t key_length, host_semaphore_type_t *semaphore, wwd_interface_t interface );
 /******************************************************
  *             Debug helper functionality
  ******************************************************/
@@ -223,7 +264,6 @@ static            const char*     wwd_status_to_string        (wwd_event_status_
 static            const char*     wwd_reason_to_string        (wwd_event_reason_t reason);
 static            const char*     wwd_interface_to_string      (wwd_interface_t interface);
 #endif /* ifdef WPRINT_ENABLE_WWD_DEBUG */
-
 
 /******************************************************
  *             Function definitions
@@ -263,15 +303,18 @@ wwd_result_t wwd_wifi_scan( wiced_scan_type_t                              scan_
         param_size = (uint16_t) ( param_size + channel_list_size * sizeof(uint16_t) );
     }
 
-    CHECK_RETURN( wwd_management_set_event_handler( scan_events, wwd_scan_events_handler, user_data, interface ) );
-
     if ( scan_type == WICED_SCAN_TYPE_PNO )
     {
+        CHECK_RETURN( wwd_management_set_event_handler( pno_events, wwd_scan_events_handler, user_data, interface ) );
+
         scan_result_callback = callback;
         wwd_scan_result_ptr = result_ptr;
 
         return wwd_wifi_pno_start( );
     }
+    /* else: regular scan */
+
+    CHECK_RETURN( wwd_management_set_event_handler( scan_events, wwd_scan_events_handler, user_data, interface ) );
 
     /* Allocate a buffer for the IOCTL message */
     scan_params = (wl_escan_params_t*) wwd_sdpcm_get_iovar_buffer( &buffer, param_size, IOVAR_STR_ESCAN );
@@ -336,6 +379,11 @@ wwd_result_t wwd_wifi_scan( wiced_scan_type_t                              scan_
     return retval;
 }
 
+wwd_result_t wwd_wifi_set_scan_suppress( wiced_bool_t enable_suppression )
+{
+    return wwd_wifi_set_ioctl_value( WLC_SET_SCANSUPPRESS, ( WICED_TRUE == enable_suppression ) ? 1 : 0,
+        WWD_STA_INTERFACE );
+}
 
 wwd_result_t wwd_wifi_abort_scan( void )
 {
@@ -401,40 +449,41 @@ static void* wwd_scan_events_handler( const wwd_event_header_t* event_header, co
         return handler_user_data;
     }
 
-    record = (wiced_scan_result_t*) ( *wwd_scan_result_ptr );
-
     /* process the pfn net found */
     if ( event_header->event_type == WLC_E_PFN_NET_FOUND )
     {
-        if ( record == NULL )
+        if ( wwd_scan_result_ptr != NULL )
         {
-            scan_result_callback( (wiced_scan_result_t**)event_data, handler_user_data, WICED_SCAN_INCOMPLETE );
-            return handler_user_data;
+            record = (wiced_scan_result_t*) ( *wwd_scan_result_ptr );
+            if ( record == NULL )
+            {
+                scan_result_callback( (wiced_scan_result_t**)event_data, handler_user_data, WICED_SCAN_INCOMPLETE );
+                return handler_user_data;
+            }
+
+            pfn_result    = (wl_pfn_scanresult_t *)event_data;
+            pfn_subnet    = &pfn_result->netinfo.pfnsubnet;
+            pfn_net_info  = &pfn_result->netinfo;
+
+            /* Firmware needs to be patched to allow returning the bss info in the result, if we want full scan results from PNO.
+                    * As the supported use case doesn't require that, leaving as-is to reduce memory usage here and in FW.
+                    */
+            record->SSID.length = pfn_subnet->SSID_len;
+            memset( record->SSID.value, 0, sizeof(record->SSID.value) );
+            memcpy( record->SSID.value, pfn_subnet->SSID, pfn_subnet->SSID_len );
+            memcpy( record->BSSID.octet, pfn_subnet->BSSID.octet, sizeof(record->BSSID.octet) );
+            record->signal_strength = pfn_net_info->RSSI;
+            record->bss_type        = WICED_BSS_TYPE_INFRASTRUCTURE;
+            record->channel         = pfn_subnet->channel;
+            record->band            = ( wwd_channel_to_wl_band( record->channel ) == (uint16_t) WL_CHANSPEC_BAND_2G ) ? WICED_802_11_BAND_2_4GHZ : WICED_802_11_BAND_5GHZ;;
+            record->on_channel      = WICED_TRUE;
+
+            /* For PNO, the user has already specified security to look for; Wiced layer will update this from recorded data */
+            record->security        = WICED_SECURITY_UNKNOWN;
         }
 
-
-        pfn_result    = (wl_pfn_scanresult_t *)event_data;
-        pfn_subnet    = &pfn_result->netinfo.pfnsubnet;
-        pfn_net_info  = &pfn_result->netinfo;
-
-        /* Firmware needs to be patched to allow returning the bss info in the result, if we want full scan results from PNO.
-                * As the supported use case doesn't require that, leaving as-is to reduce memory usage here and in FW.
-                */
-        record->SSID.length = pfn_subnet->SSID_len;
-        memset( record->SSID.value, 0, sizeof(record->SSID.value) );
-        memcpy( record->SSID.value, pfn_subnet->SSID, pfn_subnet->SSID_len );
-        memcpy( record->BSSID.octet, pfn_subnet->BSSID.octet, sizeof(record->BSSID.octet) );
-        record->signal_strength = pfn_net_info->RSSI;
-        record->bss_type        = WICED_BSS_TYPE_INFRASTRUCTURE;
-        record->channel         = pfn_subnet->channel;
-        record->band            = ( wwd_channel_to_wl_band( record->channel ) == (uint16_t) WL_CHANSPEC_BAND_2G ) ? WICED_802_11_BAND_2_4GHZ : WICED_802_11_BAND_5GHZ;;
-        record->on_channel      = WICED_TRUE;
-
-        /* For PNO, the user has already specified security to look for; Wiced layer will update this from recorded data */
-        record->security        = WICED_SECURITY_UNKNOWN;
-
         /* event header status checks don't make sense for pno events
-               * Also, firmware isn't passing up valid data in the bss_info field, so fill out and return what we have
+               * Also, firmware isn't passing up valid data in the bss_info field, so filled out and now return what we have
                */
         scan_result_callback( wwd_scan_result_ptr, handler_user_data, WICED_SCAN_INCOMPLETE );
         return handler_user_data;
@@ -487,6 +536,9 @@ static void* wwd_scan_events_handler( const wwd_event_header_t* event_header, co
     {
         return handler_user_data;
     }
+
+    /* Safe to access *wwd_scan_result_ptr, as wwd_scan_result_ptr == NULL case is handled above */
+    record = (wiced_scan_result_t*) ( *wwd_scan_result_ptr );
 
     /* Copy the SSID into the output record structure */
     record->SSID.length = (uint8_t) MIN(sizeof(record->SSID.value), bss_info->SSID_len);
@@ -764,6 +816,86 @@ wwd_result_t wwd_wifi_get_scan_params( uint32_t* assoc_time,
     return WWD_SUCCESS;
 }
 
+wwd_result_t wwd_wifi_join_halt( wiced_bool_t join_halt )
+{
+    if ( join_halt == join_halt_triggered )
+    {
+        return WWD_SUCCESS;
+    }
+
+    join_halt_triggered = join_halt;
+
+    /* if halt is wanted and a join has gone through init process (in progress) */
+    if ( join_halt_triggered == WICED_TRUE && active_join_mutex_initted == WICED_TRUE )
+    {
+        /* check if an active wait for join is happening (or about to); if so, release the semaphore */
+        host_rtos_get_semaphore( &active_join_mutex, NEVER_TIMEOUT, WICED_FALSE );
+        if ( active_join_semaphore != NULL )
+        {
+            host_rtos_set_semaphore( active_join_semaphore, WICED_FALSE );
+        }
+        /* else - halt before going into the wait state */
+        host_rtos_set_semaphore( &active_join_mutex, WICED_FALSE );
+    }
+    /* else - halt not wanted; no-op for now, OR join hasn't gone through init: code in join path does halt */
+
+    return WWD_SUCCESS;
+}
+
+/* Do any needed preparation prior to launching a join */
+static wwd_result_t wwd_wifi_active_join_init( wiced_security_t auth_type, const uint8_t* security_key, uint8_t key_length, host_semaphore_type_t *semaphore, wwd_interface_t interface)
+{
+    wwd_result_t result = WWD_SUCCESS;
+
+    if ( active_join_mutex_initted == WICED_FALSE )
+    {
+        CHECK_RETURN( host_rtos_init_semaphore( &active_join_mutex ) );
+        active_join_mutex_initted = WICED_TRUE;
+        host_rtos_set_semaphore( &active_join_mutex, WICED_FALSE );
+    }
+
+    host_rtos_get_semaphore( &active_join_mutex, NEVER_TIMEOUT, WICED_FALSE );
+    active_join_semaphore = semaphore;
+    host_rtos_set_semaphore( &active_join_mutex, WICED_FALSE );
+
+    /* a halt was set off, perhaps while waiting for mutex above; catch it here and bail */
+    if ( join_halt_triggered == WICED_TRUE )
+    {
+        return WWD_UNFINISHED;
+    }
+
+    result = wwd_wifi_prepare_join( interface, auth_type, security_key, key_length, semaphore );
+    return result;
+}
+
+/* do any needed tear down after join
+ * @param stack_semaphore - semaphore used to control execution if client_semaphore is NULL
+ * @param client_semaphore - semaphore used to control execution if client passes this in
+*/
+static void wwd_wifi_active_join_deinit( host_semaphore_type_t *stack_semaphore, wwd_result_t result, host_semaphore_type_t *client_semaphore )
+{
+    /* deinit join specific variables, with protection from mutex */
+    host_rtos_get_semaphore( &active_join_mutex, NEVER_TIMEOUT, WICED_FALSE );
+    active_join_semaphore = NULL;
+
+    /* Only deinit the semaphore if the client semaphore wasn't specified; when it is specified, stack semaphore won't be initted */
+    if ( client_semaphore == NULL )
+    {
+        host_rtos_deinit_semaphore( stack_semaphore );
+    }
+
+    if ( WWD_SUCCESS != result )
+    {
+        WPRINT_WWD_INFO(("Failed join (err %d)\n", result));
+    }
+
+    host_rtos_set_semaphore( &active_join_mutex, WICED_FALSE );
+
+    /* we forced the chip to be up during join, now let it sleep */
+    WWD_WLAN_LET_SLEEP( );
+
+}
+
 wwd_result_t wwd_wifi_join( const wiced_ssid_t* ssid, wiced_security_t auth_type, const uint8_t* security_key, uint8_t key_length, host_semaphore_type_t* semaphore )
 {
     wiced_buffer_t        buffer;
@@ -775,6 +907,11 @@ wwd_result_t wwd_wifi_join( const wiced_ssid_t* ssid, wiced_security_t auth_type
     {
         WPRINT_WWD_ERROR(("%s: failure: SSID too long\n", __func__));
         return WWD_WLAN_BADSSIDLEN;
+    }
+
+    if ( join_halt_triggered == WICED_TRUE )
+    {
+        return WWD_UNFINISHED;
     }
 
     /* Keep WLAN awake while joining */
@@ -790,12 +927,11 @@ wwd_result_t wwd_wifi_join( const wiced_ssid_t* ssid, wiced_security_t auth_type
     if ( semaphore == NULL )
     {
         CHECK_RETURN( host_rtos_init_semaphore( &join_sema ) );
-
-        result = wwd_wifi_prepare_join( WWD_STA_INTERFACE, auth_type, security_key, key_length, &join_sema );
+        result = wwd_wifi_active_join_init( auth_type, security_key, key_length, &join_sema, WWD_STA_INTERFACE );
     }
     else
     {
-        result = wwd_wifi_prepare_join( WWD_STA_INTERFACE, auth_type, security_key, key_length, semaphore );
+        result = wwd_wifi_active_join_init( auth_type, security_key, key_length, semaphore, WWD_STA_INTERFACE );
     }
 
     if ( result == WWD_SUCCESS )
@@ -823,12 +959,9 @@ wwd_result_t wwd_wifi_join( const wiced_ssid_t* ssid, wiced_security_t auth_type
         }
     }
 
-    if ( semaphore == NULL )
-    {
-        host_rtos_deinit_semaphore( &join_sema );
-    }
+    /* clean up from the join attempt */
+    wwd_wifi_active_join_deinit( &join_sema, result, semaphore );
 
-    WWD_WLAN_LET_SLEEP( );
     return result;
 }
 
@@ -859,12 +992,11 @@ wwd_result_t wwd_wifi_join_specific( const wiced_scan_result_t* ap, const uint8_
     if ( semaphore == NULL )
     {
         CHECK_RETURN( host_rtos_init_semaphore( &join_semaphore ) );
-
-        result = wwd_wifi_prepare_join( interface, security, security_key, key_length, &join_semaphore );
+        result = wwd_wifi_active_join_init( security, security_key, key_length, &join_semaphore, interface);
     }
     else
     {
-        result = wwd_wifi_prepare_join( interface, security, security_key, key_length, semaphore );
+        result = wwd_wifi_active_join_init( security, security_key, key_length, semaphore, interface);
     }
 
     if ( result == WWD_SUCCESS )
@@ -877,6 +1009,7 @@ wwd_result_t wwd_wifi_join_specific( const wiced_scan_result_t* ap, const uint8_
             if ( current_softap_channel != ap->channel )
             {
                 wwd_wifi_set_channel( WWD_AP_INTERFACE, ap->channel );
+                WPRINT_WWD_DEBUG(("WARN: moving soft-AP channel from %d to %d due to STA join\n", current_softap_channel, ap->channel));
                 host_rtos_delay_milliseconds( 100 );
             }
         }
@@ -943,16 +1076,10 @@ wwd_result_t wwd_wifi_join_specific( const wiced_scan_result_t* ap, const uint8_
             }
         }
     }
-    if ( semaphore == NULL )
-    {
-        host_rtos_deinit_semaphore( &join_semaphore );
-    }
-    if ( WWD_SUCCESS != result )
-    {
-        WPRINT_WWD_INFO(("%s: failed join (err %d)\n", __func__, result));
-    }
 
-    WWD_WLAN_LET_SLEEP( );
+    /* clean up from the join attempt */
+    wwd_wifi_active_join_deinit( &join_semaphore, result, semaphore );
+
     return result;
 }
 
@@ -1270,6 +1397,133 @@ wwd_result_t wwd_wifi_deauth_all_associated_client_stas( wwd_dot11_reason_code_t
     return WWD_SUCCESS;
 }
 
+/* return best non-radar channel and its score for given band */
+wwd_result_t
+wwd_wifi_get_best_cca(int32_t band, uint32_t *channel, uint8_t *score, uint32_t duration)
+{
+    uint32_t *chan_list;
+    uint32_t best_score, best_channel;
+    uint8_t tmp_score;
+    uint32_t delay;
+    wwd_result_t result;
+
+    /* Zero terminated channel lists */
+    uint32_t chans_2g[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0};
+    uint32_t chans_5g[] = {36, 40, 44, 48, 149, 153, 157, 161, 165, 0};
+
+    best_score = 254;  /* init to high score */
+    best_channel = 0;
+
+    /* If associated, allow extra time for normal traffic between measurments */
+    if (wwd_wifi_check_join_status(WWD_STA_INTERFACE) == WWD_SUCCESS) {
+        delay = 30;
+    } else {
+        delay = 5;
+    }
+
+    switch (band) {
+    case WICED_802_11_BAND_2_4GHZ:
+        chan_list = chans_2g;
+        break;
+    case WICED_802_11_BAND_5GHZ:
+        chan_list = chans_5g;
+        break;
+    default:
+        return WWD_WLAN_ERROR;
+    }
+
+    while (*chan_list != 0) {
+        result = wwd_wifi_get_cca_for_channel(*chan_list, duration, &tmp_score);
+        if (result == WWD_SUCCESS) {
+            if (tmp_score < best_score) {
+                best_score = tmp_score;
+                best_channel = *chan_list;
+            }
+        } else {
+            return WWD_WLAN_ERROR;
+        }
+        chan_list++;
+        /* let normal traffic flow */
+        host_rtos_delay_milliseconds(delay);
+    }
+    *channel = best_channel;
+    *score = tmp_score;
+
+    return WWD_SUCCESS;
+}
+
+/* given a list of channels, return the cca score for each channel */
+wwd_result_t
+wwd_wifi_get_cca_for_channel(uint32_t channel, uint32_t duration, uint8_t *score)
+{
+    wiced_buffer_t req_buffer;
+    wiced_buffer_t rep_buffer;
+    wiced_buffer_t response;
+    wl_rm_req_t *rm_req;
+    wl_rm_rep_t rm_rep;
+    uint32_t* rep_data;
+    int err;
+
+    /*
+     * Send Request
+     */
+    rm_req = (wl_rm_req_t *)wwd_sdpcm_get_iovar_buffer(&req_buffer, sizeof(wl_rm_req_t), IOVAR_STR_RM_REQ);
+    if (rm_req == NULL) {
+        WPRINT_APP_INFO(("%s:get rm_req buffer failed\n", __FUNCTION__));
+        return WWD_WLAN_ERROR;
+    }
+    memset(rm_req, 0, sizeof(wl_rm_req_t));
+
+    rm_req->count = 1;
+    rm_req->req[0].type = WL_RM_TYPE_CCA;
+    rm_req->req[0].dur = duration;
+    rm_req->req[0].chanspec = CH20MHZ_CHSPEC(channel);
+
+    err = wwd_sdpcm_send_iovar(SDPCM_SET, req_buffer, &response, WWD_STA_INTERFACE);
+    if (err != WWD_SUCCESS) {
+        WPRINT_APP_INFO(("%s: send_iovar req_buf FAIL %d chan %ld\n", __FUNCTION__, err, channel));
+        return WWD_WLAN_ERROR;
+    }
+    host_buffer_release(response, WWD_NETWORK_RX);
+
+    /*
+     * Let the request do its work and gather measurements
+     */
+    host_rtos_delay_milliseconds(duration+5);
+
+    /*
+     * Get the results
+     */
+    rep_data = (uint32_t*)wwd_sdpcm_get_iovar_buffer(&rep_buffer, sizeof(wl_rm_rep_t), IOVAR_STR_RM_REP);
+    if (rep_data == NULL) {
+        return WWD_WLAN_ERROR;
+    }
+    memset(&rm_rep, 0, sizeof(wl_rm_rep_t));
+
+    if (wwd_sdpcm_send_iovar(SDPCM_GET, rep_buffer, &response, WWD_STA_INTERFACE) != WWD_SUCCESS)
+    {
+        return WWD_WLAN_ERROR;
+    }
+    memcpy(&rm_rep, host_buffer_get_current_piece_data_pointer(response), sizeof(wl_rm_rep_t));
+    host_buffer_release(response, WWD_NETWORK_RX);
+
+    if (rm_rep.rep[0].flags == 4) {
+        /* INCAPABLE */
+        return WWD_WLAN_ERROR;
+    }
+
+    if (((rm_rep.rep[0].chanspec & 0xff) == channel) &&
+        (rm_rep.rep[0].dur == duration) &&
+        (rm_rep.rep[0].flags == 0) &&
+        (rm_rep.token == 0) &&
+        (rm_rep.len == 28)) {
+
+        *score = rm_rep.rep[0].data[0];
+        return WWD_SUCCESS;
+    }
+    return WWD_WLAN_ERROR;
+}
+
 #ifdef WPRINT_ENABLE_WWD_DEBUG
 static char* wwd_ssid_to_string( uint8_t *value, uint8_t length, char *ssid_buf, uint8_t ssid_buf_len )
 {
@@ -1291,8 +1545,19 @@ static const char* wwd_event_to_string( wwd_event_num_t value )
 {
     switch ( value )
     {
+        CASE_RETURN(WLC_E_BT_WIFI_HANDOVER_REQ)
+        CASE_RETURN(WLC_E_SPW_TXINHIBIT)
+        CASE_RETURN(WLC_E_FBT_AUTH_REQ_IND)
+        CASE_RETURN(WLC_E_RSSI_LQM)
+        CASE_RETURN(WLC_E_PFN_GSCAN_FULL_RESULT)
+        CASE_RETURN(WLC_E_PFN_SWC)
+        CASE_RETURN(WLC_E_AUTHORIZED)
+        CASE_RETURN(WLC_E_PROBREQ_MSG_RX)
+        CASE_RETURN(WLC_E_RMC_EVENT)
+        CASE_RETURN(WLC_E_DPSTA_INTF_IND)
         CASE_RETURN_STRING(WLC_E_NONE)
         CASE_RETURN_STRING(WLC_E_SET_SSID)
+        CASE_RETURN(WLC_E_PFN_BEST_BATCHING)
         CASE_RETURN(WLC_E_JOIN)
         CASE_RETURN(WLC_E_START)
         CASE_RETURN_STRING(WLC_E_AUTH)
@@ -1350,7 +1615,7 @@ static const char* wwd_event_to_string( wwd_event_num_t value )
         CASE_RETURN(WLC_E_IF)
         CASE_RETURN(WLC_E_P2P_DISC_LISTEN_COMPLETE)
         CASE_RETURN(WLC_E_RSSI)
-        CASE_RETURN(WLC_E_PFN_SCAN_COMPLETE)
+        CASE_RETURN_STRING(WLC_E_PFN_SCAN_COMPLETE)
         CASE_RETURN(WLC_E_EXTLOG_MSG)
         CASE_RETURN(WLC_E_ACTION_FRAME)
         CASE_RETURN(WLC_E_ACTION_FRAME_COMPLETE)
@@ -1423,17 +1688,6 @@ static const char* wwd_event_to_string( wwd_event_num_t value )
         CASE_RETURN(WLC_E_BCMC_CREDIT_SUPPORT)
         CASE_RETURN(WLC_E_PSTA_PRIMARY_INTF_IND)
         CASE_RETURN(WLC_E_FORCE_32_BIT)
-        CASE_RETURN(WLC_E_BT_WIFI_HANDOVER_REQ)
-        CASE_RETURN(WLC_E_SPW_TXINHIBIT)
-        CASE_RETURN(WLC_E_FBT_AUTH_REQ_IND)
-        CASE_RETURN(WLC_E_RSSI_LQM)
-        CASE_RETURN(WLC_E_PFN_GSCAN_FULL_RESULT)
-        CASE_RETURN(WLC_E_PFN_SWC)
-        CASE_RETURN(WLC_E_AUTHORIZED)
-        CASE_RETURN(WLC_E_PROBREQ_MSG_RX)
-        CASE_RETURN(WLC_E_RMC_EVENT)
-        CASE_RETURN(WLC_E_PFN_BEST_BATCHING)
-        CASE_RETURN(WLC_E_DPSTA_INTF_IND)
         case WLC_E_LAST:
         default:
             return "Unknown";
@@ -1633,38 +1887,40 @@ static /*@null@*/ void* wiced_join_events_handler( const wwd_event_header_t* eve
     switch ( event_header->event_type )
     {
         case WLC_E_PSK_SUP:
+
             if ( event_header->status == WLC_SUP_KEYED )
             {
                 /* Successful WPA key exchange */
                 wiced_join_status[event_header->interface] |= JOIN_SECURITY_COMPLETE;
             }
-            else if ( ( event_header->status == WLC_SUP_KEYXCHANGE_WAIT_M1 ) && ( event_header->reason == WLC_E_SUP_WPA_PSK_TMO ) )
-            {
-                /* A timeout waiting for M1 may occur at the edge of the cell or if the AP is particularly slow. */
-                WPRINT_WWD_DEBUG(("Supplicant M1 timeout event\n"));
-                wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_M1_TIMEOUT;
-                join_attempt_complete = WICED_TRUE;
-            }
-            else if ( ( event_header->status == WLC_SUP_KEYXCHANGE_WAIT_M3 ) && ( event_header->reason == WLC_E_SUP_WPA_PSK_TMO ) )
-            {
-                /* A timeout waiting for M3 is an indicator that the passphrase may be incorrect. */
-                WPRINT_WWD_DEBUG(("Supplicant M3 timeout event\n"));
-                wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_M3_TIMEOUT;
-                join_attempt_complete = WICED_TRUE;
-            }
-            else if ( ( event_header->status == WLC_SUP_KEYXCHANGE_WAIT_G1 ) && ( event_header->reason == WLC_E_SUP_WPA_PSK_TMO ) )
-            {
-                /* A timeout waiting for G1 (group key) may occur at the edge of the cell. */
-                WPRINT_WWD_DEBUG(("Supplicant G1 timeout event\n"));
-                wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_G1_TIMEOUT;
-                join_attempt_complete = WICED_TRUE;
-            }
             else
             {
-                WPRINT_WWD_DEBUG(("Unsuccessful supplicant event; status=0x%x\n", event_header->status));
-                /* Unknown failure during EAPOL key handshake */
-                wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_FAILURE;
+                /* join has completed with an error */
                 join_attempt_complete = WICED_TRUE;
+                if ( ( event_header->status == WLC_SUP_KEYXCHANGE_WAIT_M1 ) && ( event_header->reason == WLC_E_SUP_WPA_PSK_TMO ) )
+                {
+                    /* A timeout waiting for M1 may occur at the edge of the cell or if the AP is particularly slow. */
+                    WPRINT_WWD_DEBUG(("Supplicant M1 timeout event\n"));
+                    wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_M1_TIMEOUT;
+                }
+                else if ( ( event_header->status == WLC_SUP_KEYXCHANGE_WAIT_M3 ) && ( event_header->reason == WLC_E_SUP_WPA_PSK_TMO ) )
+                {
+                    /* A timeout waiting for M3 is an indicator that the passphrase may be incorrect. */
+                    WPRINT_WWD_DEBUG(("Supplicant M3 timeout event\n"));
+                    wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_M3_TIMEOUT;
+                }
+                else if ( ( event_header->status == WLC_SUP_KEYXCHANGE_WAIT_G1 ) && ( event_header->reason == WLC_E_SUP_WPA_PSK_TMO ) )
+                {
+                    /* A timeout waiting for G1 (group key) may occur at the edge of the cell. */
+                    WPRINT_WWD_DEBUG(("Supplicant G1 timeout event\n"));
+                    wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_G1_TIMEOUT;
+                }
+                else
+                {
+                    WPRINT_WWD_DEBUG(("Unsuccessful supplicant event; status=0x%x\n", event_header->status));
+                    /* Unknown failure during EAPOL key handshake */
+                    wiced_join_status[event_header->interface] |= JOIN_EAPOL_KEY_FAILURE;
+                }
             }
             break;
 
@@ -1872,7 +2128,13 @@ static /*@null@*/ void* wiced_join_events_handler( const wwd_event_header_t* eve
     {
         if ( semaphore != NULL )
         {
-            host_rtos_set_semaphore( semaphore, WICED_FALSE );
+            host_rtos_get_semaphore( &active_join_mutex, NEVER_TIMEOUT, WICED_FALSE );
+            if ( active_join_semaphore != NULL )
+            {
+                wiced_assert( "Unexpected semaphore\n", active_join_semaphore == semaphore );
+                host_rtos_set_semaphore( active_join_semaphore, WICED_FALSE );
+            }
+            host_rtos_set_semaphore( &active_join_mutex, WICED_FALSE );
         }
         return NULL;
     }
@@ -1997,33 +2259,33 @@ wwd_result_t wwd_wifi_is_ready_to_transceive( wwd_interface_t interface )
 
 wwd_result_t wwd_wifi_enable_powersave_with_throughput( uint16_t return_to_sleep_delay_ms )
 {
+    return wwd_wifi_enable_powersave_with_throughput_interface( return_to_sleep_delay_ms, WWD_STA_INTERFACE );
+}
+
+
+wwd_result_t wwd_wifi_enable_powersave_with_throughput_interface( uint16_t return_to_sleep_delay_ms, wwd_interface_t interface )
+{
     wiced_buffer_t buffer;
     uint32_t* data;
 
     if ( return_to_sleep_delay_ms == 0 )
     {
-        return_to_sleep_delay_ms = 200; // Use the default value
+        return_to_sleep_delay_ms = DEFAULT_PM2_SLEEP_RET_TIME;
     }
-    else if ( return_to_sleep_delay_ms < 10 )
+    else if ( return_to_sleep_delay_ms < PM2_SLEEP_RET_TIME_MIN )
     {
         return WWD_DELAY_TOO_SHORT;
     }
-    else if ( return_to_sleep_delay_ms > 2000 )
+    else if ( return_to_sleep_delay_ms > PM2_SLEEP_RET_TIME_MAX )
     {
         return WWD_DELAY_TOO_LONG;
     }
 
     /* Set the maximum time to wait before going back to sleep */
-    data = (uint32_t*) wwd_sdpcm_get_iovar_buffer( &buffer, (uint16_t) 4, IOVAR_STR_PM2_SLEEP_RET );
-    CHECK_IOCTL_BUFFER( data );
-    *data = (uint32_t) ( return_to_sleep_delay_ms / 10 )* 10;
-    CHECK_RETURN( wwd_sdpcm_send_iovar( SDPCM_SET, buffer, NULL, WWD_STA_INTERFACE ) );
+    CHECK_RETURN( wwd_wifi_set_iovar_value( IOVAR_STR_PM2_SLEEP_RET, (uint32_t)( return_to_sleep_delay_ms / 10 ) * 10, interface ) );
 
 #ifdef CHIP_FIRMWARE_SUPPORTS_PM_LIMIT_IOVAR
-    data = (uint32_t*) wwd_sdpcm_get_iovar_buffer( &buffer, (uint16_t) 4, IOVAR_STR_PM_LIMIT );
-    CHECK_IOCTL_BUFFER( data );
-    *data = (uint32_t) NULL_FRAMES_WITH_PM_SET_LIMIT;
-    CHECK_RETURN( wwd_sdpcm_send_iovar( SDPCM_SET, buffer, NULL, WWD_STA_INTERFACE ) );
+    CHECK_RETURN( wwd_wifi_set_iovar_value( IOVAR_STR_PM_LIMIT, NULL_FRAMES_WITH_PM_SET_LIMIT, interface ) );
 #endif /* ifdef CHIP_FIRMWARE_SUPPORTS_PM_LIMIT_IOVAR */
 
     /* set PM2 fast return to sleep powersave mode */
@@ -2031,15 +2293,24 @@ wwd_result_t wwd_wifi_enable_powersave_with_throughput( uint16_t return_to_sleep
     CHECK_IOCTL_BUFFER( data );
     *data = (uint32_t) PM2_POWERSAVE_MODE;
 
-    /* Record the power save mode and the return to sleep delay */
-    wiced_wifi_powersave_mode        = PM2_POWERSAVE_MODE;
-    wiced_wifi_return_to_sleep_delay = return_to_sleep_delay_ms;
+    if ( interface == WWD_STA_INTERFACE )
+    {
+        /* Record the power save mode and the return to sleep delay */
+        wiced_wifi_powersave_mode        = PM2_POWERSAVE_MODE;
+        wiced_wifi_return_to_sleep_delay = return_to_sleep_delay_ms;
+    }
 
-    RETURN_WITH_ASSERT( wwd_sdpcm_send_ioctl( SDPCM_SET, WLC_SET_PM, buffer, NULL, WWD_STA_INTERFACE ) );
+    RETURN_WITH_ASSERT( wwd_sdpcm_send_ioctl( SDPCM_SET, WLC_SET_PM, buffer, NULL, interface ) );
 }
 
 
 wwd_result_t wwd_wifi_enable_powersave( void )
+{
+    return wwd_wifi_enable_powersave_interface( WWD_STA_INTERFACE );
+}
+
+
+wwd_result_t wwd_wifi_enable_powersave_interface( wwd_interface_t interface )
 {
     wiced_buffer_t buffer;
     uint32_t* data;
@@ -2049,14 +2320,23 @@ wwd_result_t wwd_wifi_enable_powersave( void )
     CHECK_IOCTL_BUFFER( data );
     *data = (uint32_t) PM1_POWERSAVE_MODE;
 
-    /* Save the power save mode */
-    wiced_wifi_powersave_mode = PM1_POWERSAVE_MODE;
+    if ( interface == WWD_STA_INTERFACE )
+    {
+        /* Save the power save mode */
+        wiced_wifi_powersave_mode = PM1_POWERSAVE_MODE;
+    }
 
-    RETURN_WITH_ASSERT( wwd_sdpcm_send_ioctl( SDPCM_SET, WLC_SET_PM, buffer, NULL, WWD_STA_INTERFACE ) );
+    RETURN_WITH_ASSERT( wwd_sdpcm_send_ioctl( SDPCM_SET, WLC_SET_PM, buffer, NULL, interface ) );
 }
 
 
 wwd_result_t wwd_wifi_disable_powersave( void )
+{
+    return wwd_wifi_disable_powersave_interface( WWD_STA_INTERFACE );
+}
+
+
+wwd_result_t wwd_wifi_disable_powersave_interface( wwd_interface_t interface )
 {
     wiced_buffer_t buffer;
 
@@ -2064,10 +2344,13 @@ wwd_result_t wwd_wifi_disable_powersave( void )
     CHECK_IOCTL_BUFFER( data );
     *data = NO_POWERSAVE_MODE;
 
-    /* Save the power save mode */
-    wiced_wifi_powersave_mode = NO_POWERSAVE_MODE;
+    if ( interface == WWD_STA_INTERFACE )
+    {
+        /* Save the power save mode */
+        wiced_wifi_powersave_mode = NO_POWERSAVE_MODE;
+    }
 
-    return wwd_sdpcm_send_ioctl( SDPCM_SET, WLC_SET_PM, buffer, NULL, WWD_STA_INTERFACE );
+    return wwd_sdpcm_send_ioctl( SDPCM_SET, WLC_SET_PM, buffer, NULL, interface );
 }
 
 
@@ -2109,11 +2392,9 @@ wwd_result_t wwd_wifi_set_tx_power( uint8_t dbm )
 
 wwd_result_t wwd_wifi_set_listen_interval( uint8_t listen_interval, wiced_listen_interval_time_unit_t time_unit )
 {
-    uint32_t* data;
-    wiced_buffer_t buffer;
     uint8_t listen_interval_dtim;
 
-    if (time_unit == WICED_LISTEN_INTERVAL_TIME_UNIT_DTIM)
+    if ( time_unit == WICED_LISTEN_INTERVAL_TIME_UNIT_DTIM )
     {
         listen_interval_dtim = listen_interval;
     }
@@ -2123,19 +2404,12 @@ wwd_result_t wwd_wifi_set_listen_interval( uint8_t listen_interval, wiced_listen
         listen_interval_dtim = 0;
 
         /* The wake period is measured in beacon periods, set the value as required */
-        data = (uint32_t*) wwd_sdpcm_get_iovar_buffer( &buffer, (uint16_t) 4, IOVAR_STR_LISTEN_INTERVAL_BEACON );
-        CHECK_IOCTL_BUFFER( data );
-        *data = (uint32_t) listen_interval;
-        CHECK_RETURN( wwd_sdpcm_send_iovar( SDPCM_SET, buffer, NULL, WWD_STA_INTERFACE ) );
+        CHECK_RETURN( wwd_wifi_set_iovar_value( IOVAR_STR_LISTEN_INTERVAL_BEACON, listen_interval, WWD_STA_INTERFACE ) );
     }
 
-    data = (uint32_t*) wwd_sdpcm_get_iovar_buffer( &buffer, (uint16_t) 4, IOVAR_STR_LISTEN_INTERVAL_DTIM );
-    CHECK_IOCTL_BUFFER( data );
-    *data = (uint32_t) listen_interval_dtim;
-    CHECK_RETURN( wwd_sdpcm_send_iovar( SDPCM_SET, buffer, NULL, WWD_STA_INTERFACE ) );
+    CHECK_RETURN( wwd_wifi_set_iovar_value( IOVAR_STR_LISTEN_INTERVAL_DTIM, listen_interval_dtim, WWD_STA_INTERFACE ) );
 
     return wwd_wifi_set_listen_interval_assoc( (uint16_t)listen_interval );
-
 }
 
 
@@ -2246,8 +2520,8 @@ wwd_result_t wwd_wifi_get_pmk( const char* psk, uint8_t psk_length, char* pmk )
 
     memcpy( psk_ioctl->key, psk, psk_length );
 
-    psk_ioctl->key_len         = psk_length;
-    psk_ioctl->flags           = 0;
+    psk_ioctl->key_len      = psk_length;
+    psk_ioctl->flags        = 0;
 
     CHECK_RETURN( wwd_sdpcm_send_ioctl( SDPCM_GET, WLC_GET_WSEC_PMK, buffer, &response, WWD_STA_INTERFACE ) );
 
@@ -3650,7 +3924,20 @@ wwd_result_t wwd_wifi_set_passphrase( const uint8_t* security_key, uint8_t key_l
     return wwd_sdpcm_send_ioctl( SDPCM_SET, WLC_SET_WSEC_PMK, buffer, 0, interface );
 }
 
-static wwd_result_t wwd_wifi_set_iovar_buffer( const char* iovar, void *in_buffer, uint16_t in_buffer_length, wwd_interface_t interface )
+wwd_result_t wwd_wifi_set_ioctl_buffer( uint32_t ioctl, void *in_buffer, uint16_t in_buffer_length, wwd_interface_t interface )
+{
+    wiced_buffer_t buffer;
+    uint32_t*      data;
+
+    data = (uint32_t*) wwd_sdpcm_get_ioctl_buffer( &buffer, in_buffer_length );
+    CHECK_IOCTL_BUFFER( data );
+
+    memcpy( data, in_buffer, in_buffer_length );
+
+    return wwd_sdpcm_send_ioctl( SDPCM_SET, ioctl, buffer, NULL, interface );
+}
+
+wwd_result_t wwd_wifi_set_iovar_buffer( const char* iovar, void *in_buffer, uint16_t in_buffer_length, wwd_interface_t interface )
 {
     wiced_buffer_t buffer;
     uint32_t*      data;
@@ -3663,7 +3950,7 @@ static wwd_result_t wwd_wifi_set_iovar_buffer( const char* iovar, void *in_buffe
     return wwd_sdpcm_send_iovar( SDPCM_SET, buffer, NULL, interface );
 }
 
-static wwd_result_t wwd_wifi_set_iovar_void( const char* iovar, wwd_interface_t interface )
+wwd_result_t wwd_wifi_set_iovar_void( const char* iovar, wwd_interface_t interface )
 {
     wiced_buffer_t buffer;
 
@@ -3694,6 +3981,17 @@ wwd_result_t wwd_wifi_get_iovar_value( const char* iovar, uint32_t* value, wwd_i
     *value = *(uint32_t*) host_buffer_get_current_piece_data_pointer( response );
     host_buffer_release( response, WWD_NETWORK_RX );
     return WWD_SUCCESS;
+}
+
+wwd_result_t wwd_wifi_set_ioctl_void( uint32_t ioctl, wwd_interface_t interface )
+{
+    wiced_buffer_t buffer;
+    uint32_t*      data;
+
+    data = (uint32_t*) wwd_sdpcm_get_ioctl_buffer( &buffer, 0 );
+    CHECK_IOCTL_BUFFER( data );
+
+    return wwd_sdpcm_send_ioctl( SDPCM_SET, ioctl, buffer, 0, interface );
 }
 
 wwd_result_t wwd_wifi_set_ioctl_value( uint32_t ioctl, uint32_t value, wwd_interface_t interface )
@@ -3945,6 +4243,38 @@ wwd_result_t wwd_wifi_radio_resource_management_stat_req( wwd_interface_t interf
     return WWD_SUCCESS;
 }
 
+/* Return results of wl cap.  Optionally filter for specific cap/pattern */
+wwd_result_t wwd_wifi_get_cap( char *buf, uint16_t buflen, char *cap )
+{
+    wiced_buffer_t buffer;
+    uint8_t     *data;
+    char        *full_string;
+    wwd_result_t   result;
+    wiced_buffer_t response;
+
+    /* get results of IOVAR IOV_CAP */
+    data = (uint8_t*) wwd_sdpcm_get_iovar_buffer( &buffer, (uint16_t)buflen, IOVAR_STR_CAP );
+    CHECK_IOCTL_BUFFER( data );
+
+    result = wwd_sdpcm_send_iovar( SDPCM_GET, buffer, &response, WWD_STA_INTERFACE );
+    if ( result != WWD_SUCCESS )
+    {
+          WPRINT_WWD_DEBUG(("CAP IOVAR failed, result: %d\n", result ));
+          return WWD_WLAN_UNSUPPORTED;
+    }
+    full_string = (char *) host_buffer_get_current_piece_data_pointer( response );
+
+    /* If optional filter is supplied, answer is present or not. */
+    result = WWD_SUCCESS;
+    if (cap && strstr(full_string, cap) == NULL) {
+        result = WWD_WLAN_UNSUPPORTED;
+    } else {
+        memcpy(buf, full_string, buflen);
+    }
+    host_buffer_release( response, WWD_NETWORK_RX );
+    return result;
+}
+
 /*
  *
  *  This function gets 11k neighbor report list works from the WLAN firmware.
@@ -4158,7 +4488,7 @@ wwd_result_t wwd_wifi_fast_bss_transition_over_distribution_system( wwd_interfac
                 return WWD_WLAN_UNSUPPORTED;
         }
 
-        data = (uint8_t*) host_buffer_get_current_piece_data_pointer( response );
+        data = ( uint8_t* ) host_buffer_get_current_piece_data_pointer( response );
         memcpy( value, data, sizeof(*value) );
         host_buffer_release( response, WWD_NETWORK_RX );
     }
@@ -4213,7 +4543,14 @@ void print_scan_result( wiced_scan_result_t* record )
 {
     WPRINT_APP_INFO( ( "%5s ", ( record->bss_type == WICED_BSS_TYPE_ADHOC ) ? "Adhoc" : "Infra" ) );
     WPRINT_APP_INFO( ( "%02X:%02X:%02X:%02X:%02X:%02X ", record->BSSID.octet[0], record->BSSID.octet[1], record->BSSID.octet[2], record->BSSID.octet[3], record->BSSID.octet[4], record->BSSID.octet[5] ) );
-    WPRINT_APP_INFO( ( " %d ", record->signal_strength ) );
+    if ( WICED_FALSE == record->on_channel )
+    {
+        WPRINT_APP_INFO( ( "(off-chan)" ) );
+    }
+    else
+    {
+        WPRINT_APP_INFO( ( " %d ", record->signal_strength ) );
+    }
     if ( record->max_data_rate < 100000 )
     {
         WPRINT_APP_INFO( ( " %.1f ", (double) (record->max_data_rate / 1000.0) ) );
@@ -4436,16 +4773,12 @@ wwd_result_t wwd_wifi_get_revision_info ( wwd_interface_t interface, wlc_rev_inf
 
 wwd_result_t wwd_wifi_enable_minimum_power_consumption( void )
 {
-    wiced_buffer_t buffer;
-    uint32_t*      data;
-    wwd_result_t   result;
+    return wwd_wifi_set_iovar_value( IOVAR_STR_MPC, 1, WWD_STA_INTERFACE );
+}
 
-    data = (uint32_t*) wwd_sdpcm_get_iovar_buffer( &buffer, (uint16_t) 4, "mpc" );
-    CHECK_IOCTL_BUFFER( data );
-    *data = (uint32_t) 1;
-    result = wwd_sdpcm_send_iovar( SDPCM_SET, buffer, NULL, WWD_STA_INTERFACE );
-    wiced_assert("mpc 1 failed", result == WWD_SUCCESS );
-    return result;
+wwd_result_t wwd_wifi_disable_minimum_power_consumption( void )
+{
+    return wwd_wifi_set_iovar_value( IOVAR_STR_MPC, 0, WWD_STA_INTERFACE );
 }
 
 static wwd_result_t wwd_wifi_check_join_status( wwd_interface_t interface )
@@ -4702,6 +5035,61 @@ wwd_result_t wwd_wifi_rrm_request(   wwd_rrm_report_type_t                    re
     return err;
 }
 
+/* enable and set up wowl patterns */
+wwd_result_t wwd_wifi_wowl_enable( wwd_interface_t interface, uint32_t wowl_caps, uint32_t wowl_os,
+     wl_mkeep_alive_pkt_t *wowl_keepalive_data, uint8_t *pattern_data, uint32_t pattern_data_size, uint32_t *arp_host_ip_v4_address )
+{
+    CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_WOWL, &wowl_caps, sizeof( wowl_caps ), interface ) );
+    CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_WOWL_OS, &wowl_os, sizeof( wowl_os ), interface ) );
+    if ( wowl_keepalive_data != NULL )
+    {
+        CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_WOWL_KEEP_ALIVE, wowl_keepalive_data, (uint16_t) ( wowl_keepalive_data->length + wowl_keepalive_data->len_bytes ), interface ) );
+    }
+    if ( pattern_data != NULL )
+    {
+            printf("pre-pattern add\n");
+            CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_WOWL_PATTERN, pattern_data, (uint16_t) pattern_data_size, interface ) );
+            printf("post-pattern add\n");
+    }
+    if ( arp_host_ip_v4_address != NULL )
+    {
+        CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_WOWL_ARP_HOST_IP, arp_host_ip_v4_address, sizeof( *arp_host_ip_v4_address ), interface ) );
+    }
+
+    return WWD_SUCCESS;
+}
+
+/* have device go into ds1 after given wait period */
+wwd_result_t wwd_wifi_enter_ds1( wwd_interface_t interface, uint32_t ulp_wait_milliseconds )
+{
+    uint32_t ulp_enable = 1;
+
+    CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_ULP_WAIT, &ulp_wait_milliseconds, sizeof( ulp_wait_milliseconds ), interface ) );
+    CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_ULP, &ulp_enable, sizeof( ulp_enable ), interface ) );
+
+    return WWD_SUCCESS;
+}
+
+/* turn off wowl and clear any previously added patterns */
+wwd_result_t wwd_wifi_wowl_disable( wwd_interface_t interface )
+{
+    uint32_t val_disable = 0;
+    CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_WOWL, &val_disable, sizeof( val_disable ), interface) );
+    CHECK_RETURN( wwd_wifi_set_iovar_void( IOVAR_STR_WOWL_PATTERN_CLR, interface ) );
+
+    return WWD_SUCCESS;
+}
+
+/* leave ds1 -- disable ulp */
+wwd_result_t wwd_wifi_exit_ds1( wwd_interface_t interface )
+{
+    uint32_t val_disable = 0;
+
+    CHECK_RETURN( wwd_wifi_set_iovar_buffer( IOVAR_STR_ULP, &val_disable, sizeof( val_disable ), interface) );
+
+    return WWD_SUCCESS;
+}
+
 static wwd_result_t wwd_wiced_security_to_pfn_auth_wsec( wiced_security_t security, wl_pfn_t *pfn_net )
 {
     wwd_result_t result = WWD_SUCCESS;
@@ -4758,7 +5146,7 @@ static wwd_result_t wwd_pno_add_ssid_network( wiced_ssid_t *ssid, wiced_security
     memcpy( pfn_net.ssid.SSID, ssid->value, ssid_len );
 
     pfn_net.ssid.SSID_len = ssid_len;
-    wwd_wiced_security_to_pfn_auth_wsec( security, &pfn_net );
+    CHECK_RETURN( wwd_wiced_security_to_pfn_auth_wsec( security, &pfn_net ) );
 
     /* Note: BSS is searched for as infra is set to 0 */
 
@@ -4775,7 +5163,7 @@ wwd_result_t wwd_wifi_pno_add_network( wiced_ssid_t *ssid, wiced_security_t secu
     /* must be stopped before adding */
     CHECK_RETURN( wwd_wifi_pno_stop( ) );
 
-    wwd_pno_add_ssid_network( ssid, security );
+    CHECK_RETURN( wwd_pno_add_ssid_network( ssid, security ) );
 
     return WWD_SUCCESS;
 }

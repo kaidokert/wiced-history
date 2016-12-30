@@ -159,7 +159,7 @@ struct lifreq
     struct sockaddr           lifru_hwaddr;             /* MAC address */
     int                       lifru_count;              /* Number of devices */
     int                       lifru_mtu;                /* MTU size */
-    uint8_t                   lifru_flags;              /* Interface flags */
+    uint16_t                  lifru_flags;              /* Interface flags */
     struct mii_iotcl_notify_s llfru_mii_notify;         /* PHY event notification */
     struct mii_ioctl_data_s   lifru_mii_data;           /* MII request data */
   } lifr_ifru;
@@ -194,8 +194,9 @@ struct ifreq
     struct sockaddr           ifru_netmask;             /* Netmask */
     struct sockaddr           ifru_hwaddr;              /* MAC address */
     int                       ifru_count;               /* Number of devices */
+    int                       ifru_ivalue;              /* interface index */
     int                       ifru_mtu;                 /* MTU size */
-    uint8_t                   ifru_flags;               /* Interface flags */
+    uint16_t                  ifru_flags;               /* Interface flags */
     struct mii_iotcl_notify_s ifru_mii_notify;          /* PHY event notification */
     struct mii_ioctl_data_s   ifru_mii_data;            /* MII request data */
   } ifr_ifru;
@@ -208,6 +209,7 @@ struct ifreq
 #define ifr_hwaddr            ifr_ifru.ifru_hwaddr      /* MAC address */
 #define ifr_mtu               ifr_ifru.ifru_mtu         /* MTU */
 #define ifr_count             ifr_ifru.ifru_count       /* Number of devices */
+#define ifr_ifindex           ifr_ifru.ifru_ivalue      /* interface index */
 #define ifr_flags             ifr_ifru.ifru_flags       /* interface flags */
 #define ifr_mii_notify_pid    ifr_ifru.ifru_mii_notify.pid   /* PID to be notified */
 #define ifr_mii_notify_signo  ifr_ifru.ifru_mii_notify.signo /* Signal to notify with */
@@ -217,6 +219,8 @@ struct ifreq
 #define ifr_mii_val_in        ifr_ifru.ifru_mii_data.val_in  /* PHY input data */
 #define ifr_mii_val_out       ifr_ifru.ifru_mii_data.val_out /* PHY output data */
 
+// BSD compatible constant
+#define ifr_index             ifr_ifindex
 /*
  * Structure used in SIOCGIFCONF request.
  * Used to retrieve interface configuration
@@ -234,8 +238,71 @@ struct ifconf  {
 #define ifc_buf ifc_ifcu.ifcu_buf       /* buffer address   */
 #define ifc_req ifc_ifcu.ifcu_req       /* array of structures  */
 
+struct if_data {
+    /* generic interface information */
+    u_char  ifi_type;               /* ethernet, tokenring, etc */
+    u_char  ifi_typelen;            /* Length of frame type id */
+    u_char  ifi_physical;           /* e.g., AUI, Thinnet, 10base-T, etc */
+    u_char  ifi_addrlen;            /* media address length */
+    u_char  ifi_hdrlen;             /* media header length */
+    u_char  ifi_recvquota;          /* polling quota for receive intrs */
+    u_char  ifi_xmitquota;          /* polling quota for xmit intrs */
+    u_long  ifi_mtu;                /* maximum transmission unit */
+    u_long  ifi_metric;             /* routing metric (external only) */
+    u_long  ifi_baudrate;           /* linespeed */
+    /* volatile statistics */
+    u_long  ifi_ipackets;           /* packets received on interface */
+    u_long  ifi_ierrors;            /* input errors on interface */
+    u_long  ifi_opackets;           /* packets sent on interface */
+    u_long  ifi_oerrors;            /* output errors on interface */
+    u_long  ifi_collisions;         /* collisions on csma interfaces */
+    u_long  ifi_ibytes;             /* total number of octets received */
+    u_long  ifi_obytes;             /* total number of octets sent */
+    u_long  ifi_imcasts;            /* packets received via multicast */
+    u_long  ifi_omcasts;            /* packets sent via multicast */
+    u_long  ifi_iqdrops;            /* dropped on input, this interface */
+    u_long  ifi_noproto;            /* destined for unsupported protocol */
+    u_long  ifi_recvtiming;         /* usec spent receiving when timing */
+    u_long  ifi_xmittiming;         /* usec spent xmitting when timing */
+//    struct  timeval ifi_lastchange; /* time of last administrative change */
+        u_long  default_proto;      /* Default dl_tag when none is specified
+                                     *  on dlil_output
+                                     */
+};
+
+struct if_msghdr {
+	u_short	ifm_msglen;	      /* to skip over non-understood messages */
+	u_char	ifm_version;	  /* future binary compatability */
+	u_char	ifm_type;	      /* message type */
+	int	    ifm_addrs;	      /* like rtm_addrs */
+	int	    ifm_flags;	      /* value of if_flags */
+	u_short	ifm_index;	      /* index for associated ifp */
+	struct	if_data ifm_data; /* statistics and other data about if */
+};
+
+
+
+
+struct ifa_msghdr {
+	u_short	ifam_msglen;	/* to skip over non-understood messages */
+	u_char	ifam_version;	/* future binary compatability */
+	u_char	ifam_type;	    /* message type */
+	int	    ifam_addrs;	    /* like rtm_addrs */
+	int	    ifam_flags;	    /* value of ifa_flags */
+	u_short	ifam_index;	    /* index for associated ifp */
+	int	    ifam_metric;	/* value of ifa_metric */
+};
+
+#define RTM_NEWADDR 1
+#define RTM_DELADDR 2
+#define RTM_IFINFO  3
 /*******************************************************************************************
  * Public Function Prototypes
  *******************************************************************************************/
+/*
+ * Map an interface name into its corresponding index.
+ */
+unsigned int if_nametoindex(const char *);
+char*        if_indextoname(unsigned ifindex, char *ifname);
 
 #endif /* __INCLUDE_NET_IF_H */

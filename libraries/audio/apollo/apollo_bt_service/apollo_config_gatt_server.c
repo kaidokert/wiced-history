@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -15,6 +38,7 @@
  */
 
 #include <string.h>
+#include "wiced_log.h"
 #include "wiced_bt_dev.h"
 #include "wiced_bt_ble.h"
 #include "wiced_bt_gatt.h"
@@ -28,7 +52,6 @@
 #include "apollo_config_gatt_server.h"
 #include "apollo_bt_main_service_private.h"
 #include "apollocore.h"
-#include "apollo_log.h"
 
 /******************************************************************************
  *                                Constants
@@ -326,23 +349,23 @@ static void apollo_config_application_init( void )
     wiced_bt_gatt_status_t gatt_status;
     wiced_result_t         result;
 
-    apollo_log_msg(APOLLO_LOG_INFO, "apollo_config_application_init\n");
+    wiced_log_msg(WICED_LOG_INFO, "apollo_config_application_init\n");
 
     /* Register with stack to receive GATT callback */
     gatt_status = wiced_bt_gatt_register( apollo_config_gatt_server_callback );
 
-    apollo_log_msg(APOLLO_LOG_INFO, "wiced_bt_gatt_register: %d\n", gatt_status);
+    wiced_log_msg(WICED_LOG_INFO, "wiced_bt_gatt_register: %d\n", gatt_status);
 
     gatt_status =  wiced_bt_gatt_db_init( apollo_config_gatt_server_database, sizeof( apollo_config_gatt_server_database ) );
 
-    apollo_log_msg(APOLLO_LOG_INFO, "wiced_bt_gatt_db_init %d\n", gatt_status);
+    wiced_log_msg(WICED_LOG_INFO, "wiced_bt_gatt_db_init %d\n", gatt_status);
 
     /* Set the advertising parameters and make the device discoverable */
     apollo_config_set_advertisement_data( advertisement_type_translator( ) );
 
     result =  wiced_bt_start_advertisements( BTM_BLE_ADVERT_UNDIRECTED_HIGH, 0, NULL );
 
-    apollo_log_msg(APOLLO_LOG_INFO, "wiced_bt_start_advertisements %d\n", result);
+    wiced_log_msg(WICED_LOG_INFO, "wiced_bt_start_advertisements %d\n", result);
 
     /*
      * Set flag_stay_connected to remain connected after all messages are sent
@@ -380,7 +403,7 @@ void apollo_config_set_advertisement_data(uint8_t type)
 
     result = wiced_bt_ble_set_raw_advertisement_data( num_elem, adv_elem );
 
-    apollo_log_msg(APOLLO_LOG_INFO, "wiced_bt_ble_set_advertisement_data %d\n", result);
+    wiced_log_msg(WICED_LOG_INFO, "wiced_bt_ble_set_advertisement_data %d\n", result);
 }
 /*
  * This function is invoked when advertisements stop.  If we are configured to stay connected,
@@ -393,11 +416,11 @@ wiced_result_t apollo_config_advertisement_stopped(void)
     if ( apollo_config_state.flag_stay_connected && !apollo_config_state.conn_id )
     {
         result =  wiced_bt_start_advertisements( BTM_BLE_ADVERT_UNDIRECTED_LOW, 0, NULL );
-        apollo_log_msg(APOLLO_LOG_INFO, "wiced_bt_start_advertisements: %d\n", result);
+        wiced_log_msg(WICED_LOG_INFO, "wiced_bt_start_advertisements: %d\n", result);
     }
     else
     {
-        apollo_log_msg(APOLLO_LOG_INFO, "ADV stopped\n");
+        wiced_log_msg(WICED_LOG_INFO, "ADV stopped\n");
     }
     return result;
 }
@@ -410,7 +433,7 @@ static wiced_result_t apollo_config_advertisement_start(void)
 
     if ( result != WICED_SUCCESS )
     {
-        apollo_log_msg(APOLLO_LOG_ERR, "apollo_gatt_server_event_callback failed !\n");
+        wiced_log_msg(WICED_LOG_ERR, "apollo_gatt_server_event_callback failed !\n");
         goto _exit;
     }
     apollo_config_read_dct( &apollo_gatt_dct );
@@ -429,37 +452,37 @@ static void apollo_config_read_dct( apollo_config_gatt_server_dct_t *dct )
         memcpy(apollo_config_char_nw_passphrase_value, dct->nw_pass_phrase, sizeof(apollo_config_char_nw_passphrase_value));
         if (dct->mode == APOLLO_ROLE_SOURCE)
         {
-            apollo_log_msg(APOLLO_LOG_INFO, "Apollo device was configured as a SOURCE!\n");
+            wiced_log_msg(WICED_LOG_INFO, "Apollo device was configured as a SOURCE!\n");
             apollo_config_char_src_input_value = dct->src_type;
             apollo_config_char_src_input_vol_value = dct->src_vol;
-            apollo_log_msg(APOLLO_LOG_INFO, "ssid = %s\n", dct->nw_ssid_name);
-            apollo_log_msg(APOLLO_LOG_INFO, "passphrase = %s\n", dct->nw_pass_phrase);
-            apollo_log_msg(APOLLO_LOG_INFO, "source input = %d\n", dct->src_type);
-            apollo_log_msg(APOLLO_LOG_INFO, "source volume = %d\n", dct->src_vol);
+            wiced_log_msg(WICED_LOG_INFO, "ssid = %s\n", dct->nw_ssid_name);
+            wiced_log_msg(WICED_LOG_INFO, "passphrase = %s\n", dct->nw_pass_phrase);
+            wiced_log_msg(WICED_LOG_INFO, "source input = %d\n", dct->src_type);
+            wiced_log_msg(WICED_LOG_INFO, "source volume = %d\n", dct->src_vol);
         }
         else
         {
-            apollo_log_msg(APOLLO_LOG_INFO, "Apollo device was configured as a SINK!\n");
+            wiced_log_msg(WICED_LOG_INFO, "Apollo device was configured as a SINK!\n");
             apollo_config_char_spk_channel_value = dct->spk_channel_map;
             apollo_config_char_spk_output_vol_value = dct->spk_vol;
             memcpy(apollo_config_char_spk_name_value, dct->spk_name, sizeof(apollo_config_char_spk_name_value));
-            apollo_log_msg(APOLLO_LOG_INFO, "ssid = %s\n", dct->nw_ssid_name);
-            apollo_log_msg(APOLLO_LOG_INFO, "passphrase = %s\n", dct->nw_pass_phrase);
-            apollo_log_msg(APOLLO_LOG_INFO, "speaker name = %s\n", dct->spk_name);
-            apollo_log_msg(APOLLO_LOG_INFO, "speaker channel = %d\n", dct->spk_channel_map);
-            apollo_log_msg(APOLLO_LOG_INFO, "speaker volume = %d\n", dct->spk_vol);
+            wiced_log_msg(WICED_LOG_INFO, "ssid = %s\n", dct->nw_ssid_name);
+            wiced_log_msg(WICED_LOG_INFO, "passphrase = %s\n", dct->nw_pass_phrase);
+            wiced_log_msg(WICED_LOG_INFO, "speaker name = %s\n", dct->spk_name);
+            wiced_log_msg(WICED_LOG_INFO, "speaker channel = %d\n", dct->spk_channel_map);
+            wiced_log_msg(WICED_LOG_INFO, "speaker volume = %d\n", dct->spk_vol);
         }
     }
     else
     {
-        apollo_log_msg(APOLLO_LOG_INFO, "apollo_config : Apollo Audio device was not configured previously\n");
+        wiced_log_msg(WICED_LOG_INFO, "apollo_config : Apollo Audio device was not configured previously\n");
     }
 }
 
 static void apollo_config_write_dct( apollo_config_gatt_server_dct_t *dct )
 {
 
-    apollo_log_msg(APOLLO_LOG_INFO, "apollo_config : apollo_config_write_dct\n");
+    wiced_log_msg(WICED_LOG_INFO, "apollo_config : apollo_config_write_dct\n");
     apollo_gatt_dct.is_configured = 1;
     apollo_gatt_params.gatt_event_cbf( APOLLO_CONFIG_GATT_EVENT_DCT_WRITE, &apollo_gatt_dct, apollo_gatt_params.user_context );
 }
@@ -477,7 +500,7 @@ static attribute_t * apollo_config_get_attribute( uint16_t handle )
             return ( &gatt_user_attributes[i] );
         }
     }
-    apollo_log_msg(APOLLO_LOG_INFO, "attribute not found:%x\n", handle );
+    wiced_log_msg(WICED_LOG_INFO, "attribute not found:%x\n", handle );
     return NULL;
 }
 
@@ -491,7 +514,7 @@ static wiced_bt_gatt_status_t read_request_handler( uint16_t conn_id, wiced_bt_g
 
     if ( ( puAttribute = apollo_config_get_attribute(p_read_data->handle) ) == NULL)
     {
-        apollo_log_msg(APOLLO_LOG_INFO, "read_hndlr attr not found hdl:%x\n", p_read_data->handle );
+        wiced_log_msg(WICED_LOG_INFO, "read_hndlr attr not found hdl:%x\n", p_read_data->handle );
         return WICED_BT_GATT_INVALID_HANDLE;
     }
 
@@ -589,8 +612,8 @@ static wiced_bt_gatt_status_t read_request_handler( uint16_t conn_id, wiced_bt_g
 
     attr_len_to_copy = puAttribute->attr_len;
 
-    apollo_log_msg(APOLLO_LOG_INFO, "read_hndlr conn_id:%d hdl:%x offset:%d len:%d\n",
-                   conn_id, p_read_data->handle, p_read_data->offset, attr_len_to_copy);
+    wiced_log_msg(WICED_LOG_INFO, "read_hndlr conn_id:%d hdl:%x offset:%d len:%d\n",
+                  conn_id, p_read_data->handle, p_read_data->offset, attr_len_to_copy);
 
     if ( p_read_data->offset >= puAttribute->attr_len )
     {
@@ -623,7 +646,7 @@ static wiced_bt_gatt_status_t write_request_handler( uint16_t conn_id, wiced_bt_
     wiced_bt_gatt_status_t result    = WICED_BT_GATT_SUCCESS;
     uint8_t                *p_attr   = p_data->p_val;
 
-    apollo_log_msg(APOLLO_LOG_INFO, "write_handler: conn_id:%d hdl:0x%x prep:%d offset:%d len:%d\n",
+    wiced_log_msg(WICED_LOG_INFO, "write_handler: conn_id:%d hdl:0x%x prep:%d offset:%d len:%d\n",
                         conn_id, p_data->handle,
                         p_data->is_prep,
                         p_data->offset,
@@ -650,44 +673,44 @@ static wiced_bt_gatt_status_t write_request_handler( uint16_t conn_id, wiced_bt_
 
     case HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_MODE_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_MODE_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_MODE_VAL\n");
            apollo_config_char_nw_mode_value = *p_attr;
            apollo_gatt_dct.mode= apollo_config_char_nw_mode_value;
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.mode = %d\n ", apollo_gatt_dct.mode);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.mode = %d\n ", apollo_gatt_dct.mode);
        }
        break;
 
 
     case HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_SECURITY_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_SECURITY_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_SECURITY_VAL\n");
            apollo_config_char_nw_security_value = *p_attr;
            apollo_gatt_dct.security = apollo_config_char_nw_security_value;
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg( APOLLO_LOG_INFO,"apollo_gatt_dct.security = %d\n", apollo_gatt_dct.security );
+           wiced_log_msg( WICED_LOG_INFO,"apollo_gatt_dct.security = %d\n", apollo_gatt_dct.security );
        }
        break;
 
     case HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_SSID_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_SSID_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_SSID_VAL\n");
            memset( apollo_gatt_dct.nw_ssid_name, 0, strlen( ( char* ) apollo_config_char_nw_ssid_value ) );
            memcpy( apollo_gatt_dct.nw_ssid_name, p_data->p_val, p_data->val_len );
            memcpy( apollo_config_char_nw_ssid_value, p_data->p_val, sizeof( apollo_config_char_nw_ssid_value ) );
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.nw_ssid_name = %s\n", apollo_gatt_dct.nw_ssid_name);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.nw_ssid_name = %s\n", apollo_gatt_dct.nw_ssid_name);
        }
        break;
 
     case HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_PASSPHRASE_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_PASSPHRASE_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_NW_SERVICE_CHAR_PASSPHRASE_VAL\n");
            memset( apollo_gatt_dct.nw_pass_phrase, 0, strlen( ( char* ) apollo_config_char_nw_passphrase_value ) );
            memcpy( apollo_gatt_dct.nw_pass_phrase, p_data->p_val, p_data->val_len );
            memcpy( apollo_config_char_nw_passphrase_value ,p_data->p_val, sizeof( apollo_config_char_nw_passphrase_value ) );
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.nw_pass_phrase = %s\n", apollo_gatt_dct.nw_pass_phrase);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.nw_pass_phrase = %s\n", apollo_gatt_dct.nw_pass_phrase);
        }
        break;
 
@@ -706,22 +729,22 @@ static wiced_bt_gatt_status_t write_request_handler( uint16_t conn_id, wiced_bt_
 
     case HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_NAME_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_NAME_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_NAME_VAL\n");
            memset( apollo_gatt_dct.spk_name, 0, strlen((char*)apollo_config_char_spk_name_value ) );
            memcpy( apollo_gatt_dct.spk_name, p_data->p_val, p_data->val_len );
            memcpy( apollo_config_char_spk_name_value, p_data->p_val, sizeof(apollo_config_char_spk_name_value) );
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.spk_name = %s\n", apollo_gatt_dct.spk_name);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.spk_name = %s\n", apollo_gatt_dct.spk_name);
        }
        break;
 
     case HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_CHANNEL_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_NAME_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_NAME_VAL\n");
            apollo_config_char_spk_channel_value = *p_attr;
            apollo_gatt_dct.spk_channel_map = apollo_config_char_spk_channel_value;
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.spk_channel_map = %d\n" , apollo_gatt_dct.spk_channel_map);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.spk_channel_map = %d\n" , apollo_gatt_dct.spk_channel_map);
        }
        break;
 
@@ -736,21 +759,21 @@ static wiced_bt_gatt_status_t write_request_handler( uint16_t conn_id, wiced_bt_
 
     case HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_OUTPUT_VOL_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_OUTPUT_VOL_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SPEAKER_SERVICE_CHAR_OUTPUT_VOL_VAL\n");
            apollo_config_char_spk_output_vol_value = *p_attr;
            apollo_gatt_dct.spk_vol = apollo_config_char_spk_output_vol_value;
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.spk_vol = %d\n" , apollo_gatt_dct.spk_vol);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.spk_vol = %d\n" , apollo_gatt_dct.spk_vol);
        }
        break;
 
     case HANDLE_APOLLO_CONFIG_SOURCE_SERVICE_CHAR_INPUT_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SOURCE_SERVICE_CHAR_INPUT_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SOURCE_SERVICE_CHAR_INPUT_VAL\n");
            apollo_config_char_src_input_value = *p_attr;
            apollo_gatt_dct.src_type = apollo_config_char_src_input_value;
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.src_type = %d\n", apollo_gatt_dct.src_type);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.src_type = %d\n", apollo_gatt_dct.src_type);
        }
        break;
 
@@ -774,11 +797,11 @@ static wiced_bt_gatt_status_t write_request_handler( uint16_t conn_id, wiced_bt_
 
     case HANDLE_APOLLO_CONFIG_SOURCE_SERVICE_CHAR_INPUT_VOL_VAL:
        {
-           apollo_log_msg(APOLLO_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SOURCE_SERVICE_CHAR_INPUT_VOL_VAL\n");
+           wiced_log_msg(WICED_LOG_INFO, "writing HANDLE_APOLLO_CONFIG_SOURCE_SERVICE_CHAR_INPUT_VOL_VAL\n");
            apollo_config_char_src_input_vol_value = *p_attr;
            apollo_gatt_dct.src_vol = apollo_config_char_src_input_vol_value;
            apollo_config_state.app_dct_dirty = WICED_TRUE;
-           apollo_log_msg(APOLLO_LOG_INFO, "apollo_gatt_dct.src_vol = %d\n", apollo_gatt_dct.src_vol);
+           wiced_log_msg(WICED_LOG_INFO, "apollo_gatt_dct.src_vol = %d\n", apollo_gatt_dct.src_vol);
        }
        break;
 
@@ -794,7 +817,7 @@ static wiced_bt_gatt_status_t write_request_handler( uint16_t conn_id, wiced_bt_
  */
 static wiced_bt_gatt_status_t write_and_execute_request_handler( uint16_t conn_id, wiced_bt_gatt_exec_flag_t exec_flag )
 {
-    apollo_log_msg(APOLLO_LOG_INFO, "write exec: flag:%d\n", exec_flag);
+    wiced_log_msg(WICED_LOG_INFO, "write exec: flag:%d\n", exec_flag);
     return WICED_BT_GATT_SUCCESS;
 }
 
@@ -803,7 +826,7 @@ static wiced_bt_gatt_status_t write_and_execute_request_handler( uint16_t conn_i
  */
 static wiced_bt_gatt_status_t mtu_request_handler( uint16_t conn_id, uint16_t mtu)
 {
-    apollo_log_msg(APOLLO_LOG_INFO, "req_mtu: %d\n", mtu);
+    wiced_log_msg(WICED_LOG_INFO, "req_mtu: %d\n", mtu);
     return WICED_BT_GATT_SUCCESS;
 }
 
@@ -813,7 +836,7 @@ static wiced_bt_gatt_status_t apollo_config_gatt_server_connection_up( wiced_bt_
 {
     wiced_result_t result;
 
-    apollo_log_msg(APOLLO_LOG_INFO, "apollo_config_conn_up  id:%d\n", p_status->conn_id);
+    wiced_log_msg(WICED_LOG_INFO, "apollo_config_conn_up  id:%d\n", p_status->conn_id);
 
     /* Update the connection handler.  Save address of the connected device. */
     apollo_config_state.conn_id = p_status->conn_id;
@@ -822,7 +845,7 @@ static wiced_bt_gatt_status_t apollo_config_gatt_server_connection_up( wiced_bt_
     /* Stop advertising */
     result = wiced_bt_start_advertisements( BTM_BLE_ADVERT_OFF, 0, NULL );
 
-    apollo_log_msg(APOLLO_LOG_INFO, "Stopping Advertisements %d\n", result);
+    wiced_log_msg(WICED_LOG_INFO, "Stopping Advertisements %d\n", result);
 
     memcpy( apollo_config_hostinfo.bdaddr, p_status->bd_addr, sizeof( BD_ADDR ) );
     apollo_config_hostinfo.characteristic_client_configuration = 0;
@@ -838,7 +861,7 @@ static wiced_bt_gatt_status_t apollo_config_gatt_server_connection_down( wiced_b
 {
     wiced_result_t result;
 
-    apollo_log_msg(APOLLO_LOG_INFO, "connection_down  conn_id:%d reason:%d\n", p_status->conn_id, p_status->reason);
+    wiced_log_msg(WICED_LOG_INFO, "connection_down  conn_id:%d reason:%d\n", p_status->conn_id, p_status->reason);
 
     /* Resetting the device info */
     memset( apollo_config_state.remote_addr, 0, 6 );
@@ -856,10 +879,10 @@ static wiced_bt_gatt_status_t apollo_config_gatt_server_connection_down( wiced_b
      */
     if ( apollo_config_state.flag_stay_connected )
     {
-        apollo_log_msg(APOLLO_LOG_INFO, "connection down , start advs\n");
+        wiced_log_msg(WICED_LOG_INFO, "connection down , start advs\n");
         apollo_config_set_advertisement_data( advertisement_type_translator( ) );
         result =  wiced_bt_start_advertisements( BTM_BLE_ADVERT_UNDIRECTED_LOW, 0, NULL );
-        apollo_log_msg(APOLLO_LOG_INFO, "wiced_bt_start_advertisements %d\n", result);
+        wiced_log_msg(WICED_LOG_INFO, "wiced_bt_start_advertisements %d\n", result);
     }
     if ( apollo_config_state.app_dct_dirty != WICED_FALSE )
     {
@@ -890,7 +913,7 @@ static wiced_bt_gatt_status_t apollo_config_gatt_server_request_handler( wiced_b
 {
     wiced_bt_gatt_status_t result = WICED_BT_GATT_INVALID_PDU;
 
-    apollo_log_msg(APOLLO_LOG_INFO, "apollo_config_gatt_server_request_handler. conn %d, type %d\n", p_data->conn_id, p_data->request_type);
+    wiced_log_msg(WICED_LOG_INFO, "apollo_config_gatt_server_request_handler. conn %d, type %d\n", p_data->conn_id, p_data->request_type);
 
     switch ( p_data->request_type )
     {
@@ -911,7 +934,7 @@ static wiced_bt_gatt_status_t apollo_config_gatt_server_request_handler( wiced_b
             break;
 
         case GATTS_REQ_TYPE_CONF:
-            apollo_log_msg(APOLLO_LOG_INFO, "Received GATTS_REQ_TYPE_CONF\n");
+            wiced_log_msg(WICED_LOG_INFO, "Received GATTS_REQ_TYPE_CONF\n");
             result = WICED_BT_GATT_SUCCESS;
             break;
 
@@ -929,7 +952,7 @@ static wiced_bt_gatt_status_t apollo_config_gatt_server_callback( wiced_bt_gatt_
 {
     wiced_bt_gatt_status_t result = WICED_BT_GATT_INVALID_PDU;
 
-    apollo_log_msg(APOLLO_LOG_INFO, "apollo_config_gatts_callback ,event = %d\n" , event);
+    wiced_log_msg(WICED_LOG_INFO, "apollo_config_gatts_callback ,event = %d\n" , event);
 
     switch(event)
     {
@@ -955,8 +978,8 @@ wiced_result_t apollo_config_gatt_server_start( apollo_config_gatt_server_params
     wiced_action_jump_when_not_true( (params != NULL) && (params->gatt_event_cbf != NULL), _exit, result = WICED_BADARG );
 
     bt_evt_data = apollo_bt_service_get_management_evt_data();
-    wiced_action_jump_when_not_true( bt_evt_data != NULL, _exit, apollo_log_msg(APOLLO_LOG_ERR, "BT GATT server: BT management data pointer is NULL !\n") );
-    wiced_action_jump_when_not_true( bt_evt_data->enabled.status == WICED_BT_SUCCESS, _exit, apollo_log_msg(APOLLO_LOG_ERR, "BT GATT server: BT stack is not up !\n") );
+    wiced_action_jump_when_not_true( bt_evt_data != NULL, _exit, wiced_log_msg(WICED_LOG_ERR, "BT GATT server: BT management data pointer is NULL !\n") );
+    wiced_action_jump_when_not_true( bt_evt_data->enabled.status == WICED_BT_SUCCESS, _exit, wiced_log_msg(WICED_LOG_ERR, "BT GATT server: BT stack is not up !\n") );
 
     memcpy( &apollo_gatt_params, params, sizeof(apollo_gatt_params) );
 

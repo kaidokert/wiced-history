@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -68,7 +91,7 @@ typedef struct
     void*                       user_data;
     wiced_bool_t                is_pno_scan;
 } internal_scan_handler_t;
-
+static internal_scan_handler_t scan_handler;
 /******************************************************
  *               Static Function Declarations
  ******************************************************/
@@ -91,7 +114,6 @@ static void           wiced_wifi_scan_cleanup( void );
 /* Link management variables */
 static const wwd_event_num_t        link_events[]           = { WLC_E_LINK, WLC_E_DEAUTH_IND, WLC_E_DISASSOC_IND, WLC_E_PSK_SUP, WLC_E_NONE };
 static const wwd_event_num_t        ap_client_events[]      = { WLC_E_DEAUTH, WLC_E_DEAUTH_IND, WLC_E_DISASSOC, WLC_E_DISASSOC_IND, WLC_E_ASSOC_IND, WLC_E_REASSOC_IND, WLC_E_NONE };
-static const wwd_event_num_t        rrm_events[]            =  { WLC_E_RRM, WLC_E_NONE };
 static wiced_bool_t                 WICED_DEEP_SLEEP_SAVED_VAR( wiced_wlan_initialised )  = WICED_FALSE;
 static wiced_bool_t                 WICED_DEEP_SLEEP_SAVED_VAR( wiced_sta_link_up )       = WICED_FALSE;
 static wiced_security_t             WICED_DEEP_SLEEP_SAVED_VAR( wiced_sta_security_type ) = WICED_SECURITY_UNKNOWN;
@@ -99,6 +121,7 @@ static wiced_timer_t                wiced_sta_handshake_timer;
 static wiced_bool_t                 link_up_event_received  = WICED_FALSE;
 
 /* Scanning variables */
+static wiced_bool_t                 g_scan_semaphore_and_timer_inited;
 static wiced_semaphore_t            scan_semaphore;
 static wiced_scan_handler_result_t* off_channel_results;
 static wiced_scan_handler_result_t* scan_result_ptr;
@@ -108,7 +131,9 @@ static int                          current_bssid_list_length = 0;
 static wiced_wifi_softap_event_handler_t ap_event_handler;
 
 static wiced_country_code_t         WICED_DEEP_SLEEP_SAVED_VAR( country_code ) = WICED_DEFAULT_COUNTRY_CODE;
-
+#ifdef WICED_ENABLE_AUTO_COUNTRY
+static wiced_aggregate_code_t WICED_DEEP_SLEEP_SAVED_VAR( aggregate_code ) = WICED_DEFAULT_COUNTRY_AGGREGATE_CODE;
+#endif /* WICED_ENABLE_AUTO_COUNTRY */
 static wiced_wifi_rrm_event_handler_t rrm_event_handler;
 
 static wiced_ssid_t*                wiced_wifi_pno_ssid     = NULL;
@@ -179,9 +204,17 @@ wiced_result_t wiced_wlan_connectivity_init( void )
     if (wifi_config->device_configured == WICED_TRUE)
     {
         country_code = wifi_config->country_code;
+#ifdef WICED_ENABLE_AUTO_COUNTRY
+#error This additional field in platform_dct wifi_config_t breaks OTA2 updates - move to new structure after platform_dct_version_t
+        aggregate_code = wifi_config->aggregate_code;
+#endif /* WICED_ENABLE_AUTO_COUNTRY */
+
     }
 
     wiced_dct_read_unlock( wifi_config, WICED_FALSE );
+#ifdef WICED_ENABLE_AUTO_COUNTRY
+    wwd_set_aggregate(aggregate_code);
+#endif /* WICED_ENABLE_AUTO_COUNTRY */
 
     result = ( wiced_result_t )wwd_management_wifi_on( country_code );
 
@@ -190,7 +223,7 @@ wiced_result_t wiced_wlan_connectivity_init( void )
     {
         wiced_network_deinit( );
 
-        WPRINT_NETWORK_ERROR( ("Error %d while starting WICED!\n", result) );
+        WPRINT_NETWORK_INFO( ("Error %d while starting WICED!\n", result) );
         return result;
     }
 
@@ -247,6 +280,8 @@ wiced_result_t wiced_wlan_connectivity_resume_after_deep_sleep( void )
 
     CHECK_RETURN( wiced_network_init( ) );
 
+    CHECK_RETURN( wwd_management_wifi_plaform_mpc_init( ) );
+
     CHECK_RETURN( wiced_wifi_init( ) );
 
     CHECK_RETURN( (wiced_result_t) wwd_management_wifi_platform_init( country_code, WICED_TRUE ) );
@@ -260,16 +295,22 @@ wiced_result_t wiced_wlan_connectivity_resume_after_deep_sleep( void )
 
 static wiced_result_t wiced_wifi_init( void )
 {
-    CHECK_RETURN( wiced_rtos_init_semaphore( &scan_semaphore ) );
-    CHECK_RETURN( wiced_rtos_set_semaphore( &scan_semaphore ) ); /* Semaphore starts at 1 */
+    if( g_scan_semaphore_and_timer_inited == WICED_FALSE)
+    {
+        CHECK_RETURN( wiced_rtos_init_semaphore( &scan_semaphore ) );
+        CHECK_RETURN( wiced_rtos_set_semaphore( &scan_semaphore ) ); /* Semaphore starts at 1 */
 
-    CHECK_RETURN( wiced_rtos_init_timer( &wiced_sta_handshake_timer, HANDSHAKE_TIMEOUT_MS, handshake_timeout_handler, 0 ) );
+        CHECK_RETURN( wiced_rtos_init_timer( &wiced_sta_handshake_timer, HANDSHAKE_TIMEOUT_MS, handshake_timeout_handler, 0 ) );
+        g_scan_semaphore_and_timer_inited = WICED_TRUE;
+    }
 
     return WICED_SUCCESS;
 }
 
 wiced_result_t wiced_wifi_up( void )
 {
+    CHECK_RETURN( wwd_management_wifi_plaform_mpc_init( ) );
+
     if ( wwd_wlan_status.state == WLAN_DOWN )
     {
         CHECK_RETURN( wwd_wifi_set_up( ) );
@@ -304,10 +345,17 @@ wiced_result_t wiced_wifi_down( void )
     CHECK_RETURN( wiced_network_down( WICED_STA_INTERFACE ) );
     CHECK_RETURN( wiced_network_down( WICED_P2P_INTERFACE ) );
 
-    CHECK_RETURN( wiced_rtos_deinit_timer( &wiced_sta_handshake_timer ) );
-    CHECK_RETURN( wiced_rtos_deinit_semaphore( &scan_semaphore ) );
+    if( g_scan_semaphore_and_timer_inited == WICED_TRUE)
+    {
+        CHECK_RETURN( wiced_rtos_deinit_timer( &wiced_sta_handshake_timer ) );
+        CHECK_RETURN( wiced_rtos_deinit_semaphore( &scan_semaphore ) );
+        g_scan_semaphore_and_timer_inited = WICED_FALSE;
+    }
 
-    CHECK_RETURN( wwd_wifi_set_down( ) );
+    if ( wwd_wlan_status.state == WLAN_UP )
+    {
+        CHECK_RETURN( wwd_wifi_set_down( ) );
+    }
 
     return WICED_SUCCESS;
 }
@@ -381,6 +429,12 @@ wiced_result_t wiced_disable_powersave( void )
     wiced_wifi_disable_powersave();
     wiced_platform_mcu_disable_powersave();
     return WICED_SUCCESS;
+}
+
+/* Configure halt of any joins or scans in progress */
+wiced_result_t wiced_wifi_join_halt( wiced_bool_t halt )
+{
+    return wwd_wifi_join_halt( halt );
 }
 
 /** Join a Wi-Fi network as a client
@@ -506,6 +560,27 @@ wiced_result_t wiced_leave_ap( wiced_interface_t interface )
     return WICED_SUCCESS;
 }
 
+wiced_result_t wiced_wifi_scan_disable( void )
+{
+    wiced_result_t result = (wiced_result_t )wwd_wifi_abort_scan( );
+
+    /* If there's a failure; something went wrong. Abort req without active scan looks like a no-op */
+    if ( WICED_SUCCESS != result )
+    {
+        WPRINT_WICED_ERROR(("Failed to abort scan (none active?). Result=%d\n", result));
+        return result;
+    }
+
+    /* suppression means firmware is prevented from doing scans even user requested */
+    return (wiced_result_t)wwd_wifi_set_scan_suppress( WICED_TRUE );
+}
+
+wiced_result_t wiced_wifi_scan_enable( void )
+{
+    /* allow all scans again */
+    return (wiced_result_t)wwd_wifi_set_scan_suppress( WICED_FALSE );
+}
+
 wiced_result_t wiced_wifi_scan_networks( wiced_scan_result_handler_t results_handler, void* user_data )
 {
     return wiced_wifi_scan_networks_ex( results_handler, user_data, WICED_SCAN_TYPE_ACTIVE, NULL );
@@ -513,13 +588,13 @@ wiced_result_t wiced_wifi_scan_networks( wiced_scan_result_handler_t results_han
 
 static wiced_result_t wiced_wifi_scan_networks_ex( wiced_scan_result_handler_t results_handler, void* user_data, wiced_scan_type_t scan_type, wiced_ssid_t *ssid )
 {
-    static internal_scan_handler_t scan_handler;
     wiced_result_t result;
 
     wiced_assert("Bad args", results_handler != NULL);
 
-    /* Initialise the semaphore that will prevent simultaneous access - cannot be a mutex, since
-       * we don't want to allow the same thread to start a new scan */
+    /* A requested scan will override the last disable */
+    wiced_wifi_scan_enable( );
+
     result = wiced_rtos_get_semaphore( &scan_semaphore, SCAN_LONGEST_WAIT_TIME );
     if ( result != WICED_SUCCESS )
     {
@@ -1031,12 +1106,38 @@ static void wiced_wifi_scan_cleanup( void )
     wiced_rtos_set_semaphore(&scan_semaphore);
 }
 
+/* we're at the end of the scan job, report up the off channel results and the final result (finished or aborted) */
+static wiced_result_t wiced_scan_finish_handler( wiced_scan_handler_result_t* malloced_scan_result )
+{
+    wiced_scan_handler_result_t* result_iter, *tmp;
+
+    /* Go through the list of off-channel results and report them to the application */
+    for ( result_iter = off_channel_results; result_iter != NULL ;  )
+    {
+        /* callee frees memory so remember the next entry */
+        tmp = result_iter->next;
+
+        scan_handler.results_handler( result_iter );
+
+        /* on to the next result */
+        result_iter = tmp;
+    }
+
+    /* report last result to app */
+    scan_handler.results_handler( malloced_scan_result );
+
+    /* clean up after the scan */
+    wiced_wifi_scan_cleanup( );
+
+    return WICED_SUCCESS;
+}
+
 static void wiced_scan_result_handler( wiced_scan_result_t** result_ptr, void* user_data, wiced_scan_status_t status )
 {
     wiced_scan_handler_result_t* result_iter;
     wiced_scan_handler_result_t* current_result;
     wiced_mac_t*                 mac_iter     = NULL;
-    internal_scan_handler_t*     scan_handler = (internal_scan_handler_t*) user_data;
+    internal_scan_handler_t*    int_scan_handler = (internal_scan_handler_t*) user_data;
 
     /* Check if we don't have a scan result to send to the user */
     if ( scan_result_ptr == NULL )
@@ -1047,7 +1148,7 @@ static void wiced_scan_result_handler( wiced_scan_result_t** result_ptr, void* u
     current_result = (wiced_scan_handler_result_t*)(*result_ptr);
 
     /* check and filter pno scan results, to ensure only desired ssids are passed back */
-    if ( scan_handler->is_pno_scan == WICED_TRUE )
+    if ( int_scan_handler->is_pno_scan == WICED_TRUE )
     {
         /* if the result don't match our one and only ssid, then bail out and ignore */
         if ( wiced_wifi_pno_ssid == NULL || wiced_wifi_pno_ssid->length != current_result->ap_details.SSID.length || memcmp(current_result->ap_details.SSID.value, wiced_wifi_pno_ssid->value, wiced_wifi_pno_ssid->length) != 0 )
@@ -1064,30 +1165,18 @@ static void wiced_scan_result_handler( wiced_scan_result_t** result_ptr, void* u
     /* Check if scan is complete */
     if ( status == WICED_SCAN_COMPLETED_SUCCESSFULLY || status == WICED_SCAN_ABORTED )
     {
-        /* Go through the list of remaining off-channel results and report them to the application */
-        for ( result_iter = off_channel_results; result_iter != NULL ; )
-        {
-            if ( wiced_rtos_send_asynchronous_event( WICED_NETWORKING_WORKER_THREAD, (event_handler_t) scan_handler->results_handler, (void*) ( result_iter ) ) != WICED_SUCCESS )
-            {
-                void* temp = result_iter;
-                result_iter = result_iter->next;
-                free( temp);
-                temp = NULL;
-            }
-            else
-            {
-                result_iter = result_iter->next;
-            }
-        }
 
         /* Indicate to the scan handler that scanning is complete */
         scan_result_ptr->status = status;
-        if ( wiced_rtos_send_asynchronous_event( WICED_NETWORKING_WORKER_THREAD, (event_handler_t) scan_handler->results_handler, (void*) ( scan_result_ptr ) ) != WICED_SUCCESS )
+
+        /* send out a final event, for further processing */
+        if ( wiced_rtos_send_asynchronous_event( WICED_NETWORKING_WORKER_THREAD, (event_handler_t)wiced_scan_finish_handler, (void*) ( scan_result_ptr ) ) != WICED_SUCCESS )
         {
-            free( scan_result_ptr );
-            scan_result_ptr = NULL;
+            /* Unable to Queue the message so call scan results
+                       * handler directly with the scan status.
+                       */
+            wiced_scan_finish_handler( scan_result_ptr );
         }
-        wiced_wifi_scan_cleanup( );
         return;
     }
 
@@ -1137,7 +1226,7 @@ static void wiced_scan_result_handler( wiced_scan_result_t** result_ptr, void* u
         }
 
         /* Post event in worker thread */
-        if ( wiced_rtos_send_asynchronous_event( WICED_NETWORKING_WORKER_THREAD, (event_handler_t) scan_handler->results_handler, (void*) ( scan_result_ptr ) ) != WICED_SUCCESS )
+        if ( wiced_rtos_send_asynchronous_event( WICED_NETWORKING_WORKER_THREAD, (event_handler_t) int_scan_handler->results_handler, (void*) ( scan_result_ptr ) ) != WICED_SUCCESS )
         {
             free( *result_ptr );
             *result_ptr = NULL;
@@ -1169,7 +1258,7 @@ static void wiced_scan_result_handler( wiced_scan_result_t** result_ptr, void* u
     {
         memset( scan_result_ptr, 0, sizeof(wiced_scan_handler_result_t));
         scan_result_ptr->status    = WICED_SCAN_INCOMPLETE;
-        scan_result_ptr->user_data = scan_handler->user_data;
+        scan_result_ptr->user_data = int_scan_handler->user_data;
     }
     *result_ptr = (wiced_scan_result_t*)scan_result_ptr;
 }
@@ -1266,6 +1355,166 @@ wiced_result_t wiced_wifi_pno_stop( void )
     return WICED_SUCCESS;
 }
 
+static wiced_result_t wiced_xlate_pattern_to_wl_pattern( wiced_packet_pattern_t *pattern_in, wl_wowl_pattern_list_t *pattern_list)
+{
+    wl_wowl_pattern_t *pattern_out = &pattern_list->pattern[0];
+
+    /* one and only for now */
+    pattern_list->count = 1;
+
+    pattern_out->masksize      = pattern_in->mask_size;
+    pattern_out->offset        = pattern_in->match_offset;
+    pattern_out->patternoffset = pattern_in->mask_size + sizeof( *pattern_list );
+    pattern_out->patternsize   = pattern_in->pattern_size;
+
+    if ( 0 != pattern_in->mask_size )
+    {
+        if ( NULL == pattern_in->mask )
+        {
+            return WICED_BADARG;
+        }
+
+        memcpy( ( uint8_t* )pattern_list + sizeof( *pattern_list ), pattern_in->mask, pattern_in->mask_size );
+    }
+
+    if ( 0 != pattern_in->pattern_size )
+    {
+        if ( NULL == pattern_in->pattern )
+        {
+            wiced_assert( "Null pattern data", 0 != 0 );
+            return WICED_BADARG;
+        }
+
+        memcpy( ( uint8_t* )pattern_list + pattern_out->patternoffset, pattern_in->pattern, pattern_in->pattern_size );
+    }
+
+    return WICED_SUCCESS;
+}
+
+static wiced_result_t wiced_xlate_keep_alive_to_wl_keep_alive( wiced_keep_alive_packet_t *keep_alive_in, wl_mkeep_alive_pkt_t *keep_alive_out )
+{
+    keep_alive_out->version     = WL_MKEEP_ALIVE_VERSION;
+    keep_alive_out->length      = WL_MKEEP_ALIVE_FIXED_LEN;
+    keep_alive_out->period_msec = keep_alive_in->period_msec;
+
+    /* the one and only wowl keep alive set to FW (for now) */
+    keep_alive_out->keep_alive_id = 0;
+    keep_alive_out->len_bytes     = keep_alive_in->packet_length;
+
+    if ( 0 != keep_alive_out->len_bytes )
+    {
+        if ( NULL == keep_alive_in->packet )
+        {
+            wiced_assert( "Null keepalive data", 0 != 0 );
+            return WICED_BADARG;
+        }
+
+        memcpy( keep_alive_out->data, keep_alive_in->packet, keep_alive_out->len_bytes );
+    }
+
+    return WICED_SUCCESS;
+}
+
+/*
+  * Enter ds1 mode with a given offload
+  */
+wiced_result_t wiced_wifi_enter_ds1( wiced_interface_t interface, wiced_offload_t offload_type, wiced_offload_value_t *offload_value, uint32_t ulp_wait_milliseconds )
+{
+    uint32_t        wowl_caps = 0;
+    wiced_result_t  result    = WICED_SUCCESS;
+
+    /* powersave needs to be on to enter; make it so here */
+    result = wwd_wifi_enable_powersave( );
+
+    switch ( offload_type )
+    {
+        case WICED_OFFLOAD_PATTERN:
+        {
+            wl_wowl_pattern_list_t *pattern_list      = NULL;
+            char                   *pattern_cmd       = NULL;
+            uint32_t                pattern_data_size = sizeof( *pattern_list ) + offload_value->pattern.mask_size + offload_value->pattern.pattern_size + strlen("add") + 1;
+            /* allocate memory and xlate */
+            pattern_cmd  = calloc( pattern_data_size, 1 );
+
+            if ( NULL == pattern_cmd )
+            {
+                return WICED_OUT_OF_HEAP_SPACE;
+            }
+
+            pattern_list = ( wl_wowl_pattern_list_t* )( pattern_cmd + strlen("add") + 1 );
+            strncpy( pattern_cmd, "add", strlen("add") );
+            result = wiced_xlate_pattern_to_wl_pattern( &offload_value->pattern, pattern_list );
+
+            if ( WICED_SUCCESS == result )
+            {
+                /* call into driver to set up wowl */
+                wowl_caps |= WL_WOWL_NET;
+                result = wwd_wifi_wowl_enable( WICED_TO_WWD_INTERFACE( interface ), wowl_caps, wowl_caps, NULL, (uint8_t*)pattern_cmd, pattern_data_size, NULL );
+            }
+
+            /* free memory */
+            free( pattern_cmd );
+        }
+        break;
+        case WICED_OFFLOAD_KEEP_ALIVE:
+        {
+            wl_mkeep_alive_pkt_t  *wowl_keepalive_data = NULL;
+            /* allocate memory and xlate */
+            wowl_keepalive_data = malloc( sizeof( *wowl_keepalive_data ) + offload_value->keep_alive_packet_info.packet_length );
+
+            if ( NULL == wowl_keepalive_data )
+            {
+                return WICED_OUT_OF_HEAP_SPACE;
+            }
+
+            result = wiced_xlate_keep_alive_to_wl_keep_alive( &offload_value->keep_alive_packet_info, wowl_keepalive_data );
+
+            if ( WICED_SUCCESS == result )
+            {
+                /* call into driver to set up wowl */
+                wowl_caps |= WL_WOWL_TRAFFIC;
+                result = wwd_wifi_wowl_enable( WICED_TO_WWD_INTERFACE( interface ), wowl_caps, wowl_caps, wowl_keepalive_data, NULL, 0, NULL );
+            }
+
+            /* free memory */
+            free( wowl_keepalive_data );
+        }
+        break;
+        case WICED_OFFLOAD_ARP_HOSTIP:
+        {
+            uint32_t arp_host_ip_v4_address;
+
+            if ( WICED_IPV4 != offload_value->ipv4_address.version )
+            {
+                /* Ipv6 not currently supported */
+                return WICED_BADARG;
+            }
+
+            memcpy( &arp_host_ip_v4_address, &offload_value->ipv4_address.ip.v4, sizeof( arp_host_ip_v4_address ) );
+
+            wowl_caps |= WL_WOWL_TRAFFIC;
+            CHECK_RETURN( wwd_wifi_wowl_enable( WICED_TO_WWD_INTERFACE( interface ), wowl_caps, wowl_caps, NULL, NULL, 0, &arp_host_ip_v4_address ) );
+        }
+        break;
+        default:
+            result = WICED_BADARG;
+        break;
+    }
+
+    if ( WICED_SUCCESS == result )
+    {
+        CHECK_RETURN( wwd_wifi_enter_ds1( interface, ulp_wait_milliseconds ) );
+    }
+    return result;
+}
+
+wiced_result_t wiced_wifi_exit_ds1( wiced_interface_t interface )
+{
+    CHECK_RETURN ( wwd_wifi_exit_ds1( interface ) );
+    /* Note: powersave and wowl still enabled here: if client wants to exit it can do so; want to avoid unnecessary side-effects */
+    return WICED_SUCCESS;
+}
+
 static void find_ap_scan_handler( wiced_scan_result_t** result_ptr, void* user_data, wiced_scan_status_t status )
 {
     wiced_semaphore_t* semaphore = (wiced_semaphore_t*)user_data;
@@ -1328,4 +1577,14 @@ wwd_result_t wiced_wifi_rrm_request(  wwd_rrm_report_type_t                     
     memset(&rrm_req_complete_semaphore, 0, sizeof(rrm_req_complete_semaphore));
 
     return result;
+}
+
+wiced_result_t wiced_wifi_start_ap_with_custom_ie( wiced_ssid_t* ssid, wiced_security_t security, const char* key, uint8_t channel, const wiced_custom_ie_info_t* ie)
+{
+    CHECK_RETURN( wwd_wifi_ap_init( ssid, security, (const uint8_t*)key, (uint8_t)strlen(key), channel ) );
+    CHECK_RETURN(wwd_wifi_manage_custom_ie(WICED_AP_INTERFACE, WICED_ADD_CUSTOM_IE,
+                                           ie->oui, ie->subtype, ie->data, ie->length, ie->which_packets));
+    CHECK_RETURN( wwd_wifi_ap_up() );
+
+    return WWD_SUCCESS;
 }

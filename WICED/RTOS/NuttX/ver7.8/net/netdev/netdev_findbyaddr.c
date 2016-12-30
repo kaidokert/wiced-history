@@ -45,28 +45,15 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <netinet/in.h>
+
 #include <nuttx/net/netdev.h>
 #include <nuttx/net/ip.h>
 
-#include "netdev/netdev.h"
+#include "utils/utils.h"
 #include "devif/devif.h"
 #include "route/route.h"
-
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/****************************************************************************
- * Private Types
- ****************************************************************************/
-
-/****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/****************************************************************************
- * Public Data
- ****************************************************************************/
+#include "netdev/netdev.h"
 
 /****************************************************************************
  * Private Functions
@@ -95,10 +82,11 @@
 static FAR struct net_driver_s *netdev_finddevice_ipv4addr(in_addr_t ripaddr)
 {
   FAR struct net_driver_s *dev;
+  net_lock_t save;
 
   /* Examine each registered network device */
 
-  netdev_semtake();
+  save = net_lock();
   for (dev = g_netdevices; dev; dev = dev->flink)
     {
       /* Is the interface in the "up" state? */
@@ -112,7 +100,7 @@ static FAR struct net_driver_s *netdev_finddevice_ipv4addr(in_addr_t ripaddr)
             {
               /* Its a match */
 
-              netdev_semgive();
+              net_unlock(save);
               return dev;
             }
         }
@@ -120,7 +108,7 @@ static FAR struct net_driver_s *netdev_finddevice_ipv4addr(in_addr_t ripaddr)
 
   /* No device with the matching address found */
 
-  netdev_semgive();
+  net_unlock(save);
   return NULL;
 }
 #endif /* CONFIG_NET_IPv4 */
@@ -149,10 +137,11 @@ static FAR struct net_driver_s *
 netdev_finddevice_ipv6addr(const net_ipv6addr_t ripaddr)
 {
   FAR struct net_driver_s *dev;
+  net_lock_t save;
 
   /* Examine each registered network device */
 
-  netdev_semtake();
+  save = net_lock();
   for (dev = g_netdevices; dev; dev = dev->flink)
     {
       /* Is the interface in the "up" state? */
@@ -166,7 +155,7 @@ netdev_finddevice_ipv6addr(const net_ipv6addr_t ripaddr)
             {
               /* Its a match */
 
-              netdev_semgive();
+              net_unlock(save);
               return dev;
             }
         }
@@ -174,7 +163,7 @@ netdev_finddevice_ipv6addr(const net_ipv6addr_t ripaddr)
 
   /* No device with the matching address found */
 
-  netdev_semgive();
+  net_unlock(save);
   return NULL;
 }
 #endif /* CONFIG_NET_IPv6 */
@@ -217,14 +206,27 @@ FAR struct net_driver_s *netdev_findby_ipv4addr(in_addr_t ripaddr)
   int ret;
 #endif
 
+#ifdef CONFIG_NETDEV_LOOPBACK
+#ifdef CONFIG_NETDEV_MULTINIC
+  if (net_ipv4addr_cmp(lipaddr, HTONL(INADDR_LOOPBACK)) ||
+      net_ipv4addr_cmp(ripaddr, HTONL(INADDR_LOOPBACK)))
+    {
+      return netdev_findbyname("lo");
+    }
+#else /* CONFIG_NETDEV_MULTINIC */
+  /* loopback interface only */
+  return g_netdevices;
+#endif /*CONFIG_NETDEV_MULTINIC */
+#endif /* CONFIG_NETDEV_LOOPBACK */
+
   /* First, check if this is the broadcast IP address */
 
-  if (net_ipv4addr_cmp(ripaddr, g_ipv4_alloneaddr))
+  if (net_ipv4addr_cmp(ripaddr, INADDR_BROADCAST))
     {
 #ifdef CONFIG_NETDEV_MULTINIC
       /* Yes.. Check the local, bound address.  Is it INADDR_ANY? */
 
-      if (net_ipv4addr_cmp(lipaddr, g_ipv4_allzeroaddr))
+      if (net_ipv4addr_cmp(lipaddr, INADDR_ANY))
         {
           /* Yes.. In this case, I think we are supposed to send the
            * broadcast packet out ALL local networks.  I am not sure
@@ -232,7 +234,9 @@ FAR struct net_driver_s *netdev_findby_ipv4addr(in_addr_t ripaddr)
            * about that here.
            */
 
-          return NULL;
+          //TODO: 
+          // retuyrn NULL;
+          return netdev_findbyname("eth0");
         }
       else
         {
@@ -335,6 +339,20 @@ FAR struct net_driver_s *netdev_findby_ipv6addr(const net_ipv6addr_t ripaddr)
   int ret;
 #endif
 
+#ifdef CONFIG_NETDEV_LOOPBACK
+#ifdef CONFIG_NETDEV_MULTINIC
+  if (net_ipv6addr_cmp(lipaddr, g_ipv6_loopback) ||
+      net_ipv6addr_cmp(ripaddr, g_ipv6_loopback))
+    {
+      return netdev_findbyname("lo");
+    }
+#else /* CONFIG_NETDEV_MULTINIC */
+  /* loopback interface only */
+  return g_netdevices;
+#endif /*CONFIG_NETDEV_MULTINIC */
+#endif /* CONFIG_NETDEV_LOOPBACK */
+
+
   /* First, check if this is the broadcast IP address */
 
   if (net_ipv6addr_cmp(ripaddr, g_ipv6_alloneaddr))
@@ -349,8 +367,10 @@ FAR struct net_driver_s *netdev_findby_ipv6addr(const net_ipv6addr_t ripaddr)
            * of that and, in any event, there is nothing we can do
            * about that here.
            */
-
-          return NULL;
+//cchu
+          //
+          // retuyrn NULL;
+          return netdev_findbyname("eth0");
         }
       else
         {

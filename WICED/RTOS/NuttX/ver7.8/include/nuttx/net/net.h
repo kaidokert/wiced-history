@@ -1,7 +1,7 @@
 /****************************************************************************
  * include/nuttx/net/net.h
  *
- *   Copyright (C) 2007, 2009-2014 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007, 2009-2014, 2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,6 +49,10 @@
 #include <stdarg.h>
 #include <semaphore.h>
 
+#ifndef CONFIG_NET_NOINTS
+#  include <nuttx/irq.h>
+#endif
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -72,8 +76,10 @@
 enum net_lltype_e
 {
   NET_LL_ETHERNET = 0, /* Ethernet */
+  NET_LL_LOOPBACK,     /* Local loopback */
   NET_LL_SLIP,         /* Serial Line Internet Protocol (SLIP) */
-  NET_LL_PPP           /* Point-to-Point Protocol (PPP) */
+  NET_LL_TUN,          /* TUN Virtual Network Device */
+  NET_LL_6LOWPAN       /* IEEE 802.15.4 6LoWPAN*/
 };
 
 /* This defines a bitmap big enough for one bit for each socket option */
@@ -137,7 +143,7 @@ struct socketlist
 /* Callback from netdev_foreach() */
 
 struct net_driver_s; /* Forward reference. Defined in nuttx/net/netdev.h */
-typedef int (*netdev_callback_t)(FAR struct net_driver_s *dev, void *arg);
+typedef int (*netdev_callback_t)(FAR struct net_driver_s *dev, FAR void *arg);
 
 #ifdef CONFIG_NET_NOINTS
 /* Semaphore based locking for non-interrupt based logic.
@@ -174,11 +180,56 @@ extern "C"
  ****************************************************************************/
 
 /****************************************************************************
+ * Name: net_setup
+ *
+ * Description:
+ *   This is called from the OS initialization logic at power-up reset in
+ *   order to configure networking data structures.  This is called prior
+ *   to platform-specific driver initialization so that the networking
+ *   subsystem is prepared to deal with network driver initialization
+ *   actions.
+ *
+ *   Actions performed in this initialization phase assume that base OS
+ *   facilities such as semaphores are available but this logic cannot
+ *   depend upon OS resources such as interrupts or timers which are not
+ *   yet available.
+ *
+ * Input Parameters:
+ *   None
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+void net_setup(void);
+
+/****************************************************************************
+ * Name: net_initialize
+ *
+ * Description:
+ *   This function is called from the OS initialization logic at power-up
+ *   reset AFTER initialization of hardware facilities such as timers and
+ *   interrupts.   This logic completes the initialization started by
+ *   net_setup().
+ *
+ * Input Parameters:
+ *   None
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+void net_initialize(void);
+
+/****************************************************************************
  * Critical section management.  The NuttX configuration setting
- * CONFIG_NET_NOINT indicates that uIP not called from the interrupt level.
- * If CONFIG_NET_NOINTS is defined, then these will map to semaphore
- * controls.  Otherwise, it assumed that uIP will be called from interrupt
- * level handling and these will map to interrupt enable/disable controls.
+ * CONFIG_NET_NOINTS indicates that the network stack not called from the
+ * interrupt level.  If CONFIG_NET_NOINTS is defined, then these will map
+ * to semaphore controls.  Otherwise, it assumed that the stack will be
+ * called from interrupt level handling and these will map to interrupt
+ * enable/disable controls.
  *
  *
  * If CONFIG_NET_NOINTS is defined, then semaphore based locking is used:
@@ -207,7 +258,7 @@ extern "C"
 #ifdef CONFIG_NET_NOINTS
 net_lock_t net_lock(void);
 #else
-#  define net_lock() irqsave()
+#  define net_lock() enter_critical_section()
 #endif
 
 /****************************************************************************
@@ -221,7 +272,7 @@ net_lock_t net_lock(void);
 #ifdef CONFIG_NET_NOINTS
 void net_unlock(net_lock_t flags);
 #else
-#  define net_unlock(f) irqrestore(f)
+#  define net_unlock(f) leave_critical_section(f)
 #endif
 
 /****************************************************************************
@@ -296,23 +347,6 @@ void net_setipid(uint16_t id);
  ****************************************************************************/
 
 int net_checksd(int fd, int oflags);
-
-/****************************************************************************
- * Name: net_initialize
- *
- * Description:
- *   This is called from the OS initialization logic at power-up reset in
- *   order to configure the networking subsystem.
- *
- * Input Parameters:
- *   None
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
-void net_initialize(void);
 
 /****************************************************************************
  * Name:
@@ -472,6 +506,106 @@ int psock_close(FAR struct socket *psock);
 struct sockaddr; /* Forward reference. Defined in nuttx/include/sys/socket.h */
 int psock_bind(FAR struct socket *psock, FAR const struct sockaddr *addr,
                socklen_t addrlen);
+
+/****************************************************************************
+ * Function: psock_listen
+ *
+ * Description:
+ *   To accept connections, a socket is first created with psock_socket(), a
+ *   willingness to accept incoming connections and a queue limit for
+ *   incoming connections are specified with psock_listen(), and then the
+ *   connections are accepted with psock_accept(). The psock_listen() call
+ *   applies only to sockets of type SOCK_STREAM or SOCK_SEQPACKET.
+ *
+ * Parameters:
+ *   psock    Reference to an internal, boound socket structure.
+ *   backlog  The maximum length the queue of pending connections may grow.
+ *            If a connection request arrives with the queue full, the client
+ *            may receive an error with an indication of ECONNREFUSED or,
+ *            if the underlying protocol supports retransmission, the request
+ *            may be ignored so that retries succeed.
+ *
+ * Returned Value:
+ *   On success, zero is returned. On error, -1 is returned, and errno is set
+ *   appropriately.
+ *
+ *   EADDRINUSE
+ *     Another socket is already listening on the same port.
+ *   EOPNOTSUPP
+ *     The socket is not of a type that supports the listen operation.
+ *
+ ****************************************************************************/
+
+int psock_listen(FAR struct socket *psock, int backlog);
+
+/****************************************************************************
+ * Function: psock_accept
+ *
+ * Description:
+ *   The psock_accept function is used with connection-based socket types
+ *   (SOCK_STREAM, SOCK_SEQPACKET and SOCK_RDM). It extracts the first
+ *   connection request on the queue of pending connections, creates a new
+ *   connected socket with mostly the same properties as 'sockfd', and
+ *   allocates a new socket descriptor for the socket, which is returned. The
+ *   newly created socket is no longer in the listening state. The original
+ *   socket 'sockfd' is unaffected by this call.  Per file descriptor flags
+ *   are not inherited across an psock_accept.
+ *
+ *   The 'sockfd' argument is a socket descriptor that has been created with
+ *   socket(), bound to a local address with bind(), and is listening for
+ *   connections after a call to listen().
+ *
+ *   On return, the 'addr' structure is filled in with the address of the
+ *   connecting entity. The 'addrlen' argument initially contains the size
+ *   of the structure pointed to by 'addr'; on return it will contain the
+ *   actual length of the address returned.
+ *
+ *   If no pending connections are present on the queue, and the socket is
+ *   not marked as non-blocking, psock_accept blocks the caller until a
+ *   connection is present. If the socket is marked non-blocking and no
+ *   pending connections are present on the queue, psock_accept returns
+ *   EAGAIN.
+ *
+ * Parameters:
+ *   psock    Reference to the listening socket structure
+ *   addr     Receives the address of the connecting client
+ *   addrlen  Input: allocated size of 'addr', Return: returned size of 'addr'
+ *   newsock  Location to return the accepted socket information.
+ *
+ * Returned Value:
+ *  Returns 0 (OK) on success.  On failure, it returns -1 (ERROR) with the
+ *  errno variable set to indicate the nature of the error.
+ *
+ * EAGAIN or EWOULDBLOCK
+ *   The socket is marked non-blocking and no connections are present to
+ *   be accepted.
+ * EOPNOTSUPP
+ *   The referenced socket is not of type SOCK_STREAM.
+ * EINTR
+ *   The system call was interrupted by a signal that was caught before
+ *   a valid connection arrived.
+ * ECONNABORTED
+ *   A connection has been aborted.
+ * EINVAL
+ *   Socket is not listening for connections.
+ * EMFILE
+ *   The per-process limit of open file descriptors has been reached.
+ * ENFILE
+ *   The system maximum for file descriptors has been reached.
+ * EFAULT
+ *   The addr parameter is not in a writable part of the user address
+ *   space.
+ * ENOBUFS or ENOMEM
+ *   Not enough free memory.
+ * EPROTO
+ *   Protocol error.
+ * EPERM
+ *   Firewall rules forbid connection.
+ *
+ ****************************************************************************/
+
+int psock_accept(FAR struct socket *psock, FAR struct sockaddr *addr,
+                 FAR socklen_t *addrlen, FAR struct socket *newsock);
 
 /****************************************************************************
  * Name: psock_connect
@@ -1049,7 +1183,7 @@ int net_vfcntl(int sockfd, int cmd, va_list ap);
  *
  * Parameters:
  *   dev    - The device driver structure to be registered.
- *   lltype - Link level protocol used by the driver (Ethernet, SLIP, PPP, ...
+ *   lltype - Link level protocol used by the driver (Ethernet, SLIP, TUN, ...
  *
  * Returned Value:
  *   0:Success; negated errno on failure
@@ -1101,7 +1235,7 @@ int netdev_unregister(FAR struct net_driver_s *dev);
  *
  ****************************************************************************/
 
-int netdev_foreach(netdev_callback_t callback, void *arg);
+int netdev_foreach(netdev_callback_t callback, FAR void *arg);
 
 #undef EXTERN
 #ifdef __cplusplus

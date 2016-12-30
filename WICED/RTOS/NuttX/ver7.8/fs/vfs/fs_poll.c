@@ -254,6 +254,57 @@ static inline int poll_teardown(FAR struct pollfd *fds, nfds_t nfds, int *count,
  ****************************************************************************/
 
 /****************************************************************************
+ * Function: file_poll
+ *
+ * Description:
+ *   The standard poll() operation redirects operations on file descriptors
+ *   to this function.
+ *
+ * Input Parameters:
+ *   fd    - The file descriptor of interest
+ *   fds   - The structure describing the events to be monitored, OR NULL if
+ *           this is a request to stop monitoring events.
+ *   setup - true: Setup up the poll; false: Teardown the poll
+ *
+ * Returned Value:
+ *  0: Success; Negated errno on failure
+ *
+ ****************************************************************************/
+
+#if CONFIG_NFILE_DESCRIPTORS > 0
+int file_poll(int fd, FAR struct pollfd *fds, bool setup)
+{
+  FAR struct file *filep;
+  FAR struct inode *inode;
+  int ret = -ENOSYS;
+
+  /* Get the file pointer corresponding to this file descriptor */
+
+  filep = fs_getfilep(fd);
+  if (!filep)
+    {
+      /* The errno value has already been set */
+
+      return -get_errno();
+    }
+
+  /* Is a driver registered? Does it support the poll method?
+   * If not, return -ENOSYS
+   */
+
+  inode = filep->f_inode;
+  if (inode && inode->u.i_ops && inode->u.i_ops->poll)
+    {
+      /* Yes, then setup the poll */
+
+      ret = (int)inode->u.i_ops->poll(filep, fds, setup);
+    }
+
+  return ret;
+}
+#endif
+
+/****************************************************************************
  * Name: poll
  *
  * Description:
@@ -286,10 +337,9 @@ static inline int poll_teardown(FAR struct pollfd *fds, nfds_t nfds, int *count,
 
 int poll(FAR struct pollfd *fds, nfds_t nfds, int timeout)
 {
-  struct timespec abstime;
-  irqstate_t flags;
   sem_t sem;
   int count = 0;
+  int err;
   int ret;
 
   sem_init(&sem, 0, 0);
@@ -304,56 +354,27 @@ int poll(FAR struct pollfd *fds, nfds_t nfds, int timeout)
         }
       else if (timeout > 0)
         {
-          time_t   sec;
-          uint32_t nsec;
-
           /* Either wait for either a poll event(s), for a signal to occur,
            * or for the specified timeout to elapse with no event.
            *
            * NOTE: If a poll event is pending (i.e., the semaphore has already
-           * been incremented), sem_timedwait() will not wait, but will return
+           * been incremented), sem_tickwait() will not wait, but will return
            * immediately.
            */
 
-           sec  = timeout / MSEC_PER_SEC;
-           nsec = (timeout - MSEC_PER_SEC * sec) * NSEC_PER_MSEC;
-
-           /* Make sure that the following are atomic by disabling interrupts.
-            * Interrupts will be re-enabled while we are waiting.
-            */
-
-           flags = irqsave();
-           (void)clock_gettime(CLOCK_REALTIME, &abstime);
-
-           abstime.tv_sec  += sec;
-           abstime.tv_nsec += nsec;
-           if (abstime.tv_nsec > NSEC_PER_SEC)
-             {
-               abstime.tv_sec++;
-               abstime.tv_nsec -= NSEC_PER_SEC;
-             }
-
-           ret = sem_timedwait(&sem, &abstime);
+           ret = sem_tickwait(&sem, clock_systimer(), MSEC2TICK(timeout));
            if (ret < 0)
              {
-               int err = get_errno();
-
-               if (err == ETIMEDOUT)
+               if (ret == -ETIMEDOUT)
                  {
                    /* Return zero (OK) in the event of a timeout */
 
                    ret = OK;
                  }
-               else
-                 {
-                   /* EINTR is the only other error expected in normal operation */
 
-                   ret = -err;
+                   /* EINTR is the only other error expected in normal operation */
                  }
              }
-
-           irqrestore(flags);
-        }
       else
         {
           /* Wait for the poll event or signal with no timeout */
@@ -363,9 +384,15 @@ int poll(FAR struct pollfd *fds, nfds_t nfds, int timeout)
 
       /* Teardown the poll operation and get the count of events.  Zero will be
        * returned in the case of a timeout.
+       *
+       * Preserve ret, if negative, since it holds the result of the wait.
        */
 
-      ret = poll_teardown(fds, nfds, &count, ret);
+      err = poll_teardown(fds, nfds, &count, ret);
+      if (err < 0 && ret >= 0)
+        {
+          ret = err;
+        }
     }
 
   sem_destroy(&sem);

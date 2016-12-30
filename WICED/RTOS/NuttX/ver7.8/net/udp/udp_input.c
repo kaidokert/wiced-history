@@ -186,7 +186,7 @@ static int udp_input(FAR struct net_driver_s *dev, unsigned int iplen)
       conn = udp_active(dev, udp);
       if (conn)
         {
-          uint16_t flags;
+          uint32_t flags;
 
           /* Set-up for the application callback */
 

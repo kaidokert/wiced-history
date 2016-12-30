@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -134,12 +157,22 @@ typedef uint32_t    OTA2_CRC_VAR;
  ******************************************************/
 typedef enum
 {
-    OTA2_BOOT_NEVER_RUN_BEFORE = 0,
-    OTA2_BOOT_NORMAL,
+    OTA2_BOOT_NEVER_RUN_BEFORE = 0,     /* Do not change this ENUM location */
+    OTA2_BOOT_NORMAL,                   /* Do not change this ENUM location */
+    /* Use these after failsafe recovery to continue the ota2 extraction preocess */
+    OTA2_BOOT_EXTRACT_FACTORY_RESET,    /* Renamed in SDK-4.0.1, but stays the same ENUM as SDK OTA2_BOOT_FACTORY_RESET */
+    OTA2_BOOT_EXTRACT_UPDATE,           /* Renamed in SDK-4.0.1, but stays the same ENUM as SDK OTA2_BOOT_FACTORY_RESET */
+    OTA2_BOOT_SOFTAP_UPDATE,            /* Do not change this ENUM location */
+    OTA2_BOOT_LAST_KNOWN_GOOD,          /* Do not change this ENUM location */
+
     OTA2_BOOT_FACTORY_RESET,
     OTA2_BOOT_UPDATE,
-    OTA2_SOFTAP_UPDATE,
-    OTA2_BOOT_LAST_KNOWN_GOOD,
+
+    /* Use these before starting an extraction. If extraction is interrupted, use failsafe */
+    OTA2_BOOT_FAILSAFE_FACTORY_RESET,
+    OTA2_BOOT_FAILSAFE_UPDATE,
+
+    OTA2_MAX_BOOT_TYPES     /* Not a valid boot type */
 } ota2_boot_type_t;
 
 
@@ -151,7 +184,7 @@ typedef enum
     WICED_OTA2_IMAGE_TYPE_LAST_KNOWN_GOOD,
     WICED_OTA2_IMAGE_TYPE_STAGED
 
-}wiced_ota2_image_type_t;
+} wiced_ota2_image_type_t;
 
 typedef enum {
     WICED_OTA2_IMAGE_INVALID             = 0,
@@ -256,7 +289,7 @@ static inline void wiced_ota2_image_header_swap_network_order(wiced_ota2_image_h
         /* convert 16 & 32 bit values to network order */
         ota2_header->ota2_version     = htons(ota2_header->ota2_version);
         ota2_header->major_version    = htons(ota2_header->major_version);
-        ota2_header->minor_version   = htons(ota2_header->minor_version);
+        ota2_header->minor_version    = htons(ota2_header->minor_version);
         ota2_header->download_status  = htons(ota2_header->download_status);
         ota2_header->bytes_received   = htonl(ota2_header->bytes_received);
         ota2_header->header_crc       = htonl(ota2_header->header_crc);
@@ -330,6 +363,23 @@ wiced_result_t wiced_ota2_image_validate ( wiced_ota2_image_type_t ota_type );
 wiced_result_t wiced_ota2_image_get_status ( wiced_ota2_image_type_t ota_type, wiced_ota2_image_status_t *status );
 
 /**
+ * Extract OTA2 extractor (or Apps LUT) from the OTA2 Image to the current area
+ *
+ * NOTE: This is used by the OTA2 Failsafe code
+ *
+ * @param[in]  ota_type     - OTA Image type
+ * @param[in]  component    - OTA Component to extract (ONLY WICED_OTA2_IMAGE_COMPONENT_LUT or WICED_OTA2_IMAGE_COMPONENT_OTA_APP)
+ * @param[out] destination  - address extracted to in FLASH
+ * @param[out] destination  - extracted size
+ *
+ * @return WICED_SUCCESS
+ *         WICED_ERROR      - Bad OTA Image, not fully downloaded
+ *         WICED_BADARG     - NULL pointer passed in or bad size
+ */
+wiced_result_t wiced_ota2_image_extract_uncompressed_component( wiced_ota2_image_type_t ota_type, wiced_ota2_image_component_type_t component,
+                                                                uint32_t* destination, uint32_t* destination_size );
+
+/**
  * Extract OTA Image to the current area
  * NOTE: All information regarding destination of data in the system is part of the OTA Image.
  *
@@ -357,6 +407,20 @@ wiced_result_t wiced_ota2_image_extract ( wiced_ota2_image_type_t ota_type );
  *           WICED_BADARG
  */
 wiced_result_t  wiced_ota2_image_write_data(uint8_t* data, uint32_t offset, uint32_t size);
+
+/** Get the OTA2 application software version from the header
+ *
+ * NOTE: Only updates the major & minor values on WICED_SUCCESS
+ *
+ * @param image_type [in]   : OTA2 Image type to get software app version
+ * @param major [out]       : ptr to store software major version
+ * @param minor [out]       : ptr to store software minor version
+ *
+ * @return  WICED_SUCCESS
+ *          WICED_BADARG
+ *          WICED_ERROR
+ */
+wiced_result_t wiced_ota2_image_get_version(wiced_ota2_image_type_t image_type, uint16_t* major, uint16_t* minor);
 
 /** Update the OTA image header after writing (parts of) the downloaded OTA image to FLASH  TODO: make this platform-specific
  *

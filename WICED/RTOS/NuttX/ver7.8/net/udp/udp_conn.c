@@ -1,7 +1,7 @@
 /****************************************************************************
  * net/udp/udp_conn.c
  *
- *   Copyright (C) 2007-2009, 2011-2012 Gregory Nutt. All rights reserved.
+ *   Copyright (C) 2007-2009, 2011-2012, 2016 Gregory Nutt. All rights reserved.
  *   Author: Gregory Nutt <gnutt@nuttx.org>
  *
  * Large parts of this file were leveraged from uIP logic:
@@ -50,6 +50,8 @@
 #include <errno.h>
 #include <debug.h>
 
+#include <netinet/in.h>
+
 #include <arch/irq.h>
 
 #include <nuttx/net/netconfig.h>
@@ -74,7 +76,7 @@
  * Private Data
  ****************************************************************************/
 
-/* The array containing all uIP UDP connections. */
+/* The array containing all UDP connections. */
 
 struct udp_conn_s g_udp_connections[CONFIG_NET_UDP_CONNS];
 
@@ -113,7 +115,7 @@ static inline void _udp_semtake(FAR sem_t *sem)
        * the wait was awakened by a signal.
        */
 
-      ASSERT(*get_errno_ptr() == EINTR);
+      ASSERT(get_errno() == EINTR);
     }
 }
 
@@ -305,12 +307,12 @@ static inline FAR struct udp_conn_s *
       if (conn->lport != 0 && udp->destport == conn->lport &&
           (conn->rport == 0 || udp->srcport == conn->rport) &&
 #ifdef CONFIG_NETDEV_MULTINIC
-          (net_ipv4addr_cmp(conn->u.ipv4.laddr, g_ipv4_allzeroaddr) ||
-           net_ipv4addr_cmp(conn->u.ipv4.laddr, g_ipv4_alloneaddr) ||
+          (net_ipv4addr_cmp(conn->u.ipv4.laddr, INADDR_ANY) ||
+           net_ipv4addr_cmp(conn->u.ipv4.laddr, INADDR_BROADCAST) ||
            net_ipv4addr_hdrcmp(ip->destipaddr, &conn->u.ipv4.laddr)) &&
 #endif
-          (net_ipv4addr_cmp(conn->u.ipv4.raddr, g_ipv4_allzeroaddr) ||
-           net_ipv4addr_cmp(conn->u.ipv4.raddr, g_ipv4_alloneaddr) ||
+          (net_ipv4addr_cmp(conn->u.ipv4.raddr, INADDR_ANY) ||
+           net_ipv4addr_cmp(conn->u.ipv4.raddr, INADDR_BROADCAST) ||
            net_ipv4addr_hdrcmp(ip->srcipaddr, &conn->u.ipv4.raddr)))
         {
           /* Matching connection found.. return a reference to it */
@@ -684,13 +686,14 @@ int udp_bind(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr)
  * Input Parameters:
  *   conn - A reference to UDP connection structure
  *   addr - The address of the remote host.
+ *   connected - a flag to indicate if the UDP socket is connected
  *
  * Assumptions:
  *   This function is called user code.  Interrupts may be enabled.
  *
  ****************************************************************************/
 
-int udp_connect(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr)
+int udp_connect(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr, int connected)
 {
   /* Has this address already been bound to a local port (lport)? */
 
@@ -737,7 +740,7 @@ int udp_connect(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr)
         }
 #endif /* CONFIG_NET_IPv6 */
     }
-  else
+  else if (!connected)
     {
       conn->rport = 0;
 
@@ -746,7 +749,7 @@ int udp_connect(FAR struct udp_conn_s *conn, FAR const struct sockaddr *addr)
       if (conn->domain == PF_INET)
 #endif
         {
-          net_ipv4addr_copy(conn->u.ipv4.raddr, g_ipv4_allzeroaddr);
+          net_ipv4addr_copy(conn->u.ipv4.raddr, INADDR_ANY);
         }
 #endif /* CONFIG_NET_IPv4 */
 

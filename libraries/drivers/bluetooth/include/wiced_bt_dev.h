@@ -28,9 +28,9 @@
 #pragma once
 
 #include "wiced_bt_types.h"
+#include "hcidefs.h"
 #include "rtos.h"
 #include "wiced_result.h"
-#include "hcidefs.h"
 #include "bt_target.h"
 
 /** Result/Status for wiced_bt_dev */
@@ -1608,6 +1608,42 @@ wiced_result_t wiced_bt_dev_get_role( wiced_bt_device_address_t remote_bd_addr, 
  */
 wiced_bool_t wiced_bt_dev_get_security_state(wiced_bt_device_address_t bd_addr, uint8_t *p_sec_flags);
 
+/**
+ * Function         wiced_bt_dev_get_low_power_mode
+ *
+ *                  Get Current low-power mode of device
+ *
+ * @return          TRUE if Low-power mode is enabled
+ *
+ */
+wiced_bool_t wiced_bt_dev_get_low_power_mode(void);
+
+/**
+ * Function         wiced_bt_dev_set_low_power_mode
+ *
+ *                  Enable or Disable low-power mode of device
+ *
+ * @param[in]       enable_low_power  : 0 to disable, 1 to enable
+ *
+ * @return          WICED_BT_SUCCESS if successful
+ *                  WICED_BT_UNSUPPORTED if Low-power Mode not supported by bluetooth stack
+ *                  WICED_BT_ERROR if setting low-power mode failed
+ *
+ */
+wiced_result_t wiced_bt_dev_set_low_power_mode(wiced_bool_t enable_low_power);
+
+#ifdef USE_WICED_HCI
+/**
+ * Function         wiced_bt_dev_push_nvram_data
+ * .....MCU host push all the saved NVRAM informatoin mainly paired device Info
+ *
+ * @param[in]       paired_device_info : Remote device address, Link key
+ *
+ * @return          WICED_BT_SUCCESS if successful
+ *
+ */
+wiced_result_t wiced_bt_dev_push_nvram_data(wiced_bt_device_link_keys_t *paired_device_info);
+#endif
 #ifdef __cplusplus
 }
 #endif

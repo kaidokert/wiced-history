@@ -237,5 +237,22 @@ double_t strtod(const char *str, char **endptr)
   return number;
 }
 
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+
+/***************************************************(************************
+ * Name: strtof
+ *
+ * Description:
+ *   Convert a string to a float value
+ *
+ ****************************************************************************/
+
+float strtof(const char *str, char **endptr)
+{
+  return (float) strtod(str, endptr);
+}
+
 #endif /* CONFIG_HAVE_DOUBLE */
 

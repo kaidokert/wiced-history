@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 #pragma once
 
@@ -64,20 +87,46 @@ static inline ALWAYS_INLINE uint32_t htobe32(uint32_t v)
 #define DIV_ROUND_UP(m, n)    (((m) + (n) - 1) / (n))
 #endif /* ifndef DIV_ROUND_UP */
 
+/**
+ * Macro to verify that result value of function x is WICED_SUCCESS
+ * if not, return with result value;
+ */
 #define WICED_VERIFY(x)                               {wiced_result_t res = (x); if (res != WICED_SUCCESS){return res;}}
 
+/**
+ * Verify the expression, if the result is not WICED_SUCCESS, jump to the label
+ */
 #define WICED_VERIFY_GOTO( expr, res_var, label )     {res_var = (expr); if (res_var != WICED_SUCCESS){goto label;}}
 
+/**
+ * Memory concatenation
+ *  Copy source to destination, return pointer to the end of the copy
+ */
 #define MEMCAT(destination, source, source_length)    (void*)((uint8_t*)memcpy((destination),(source),(source_length)) + (source_length))
 
+/**
+ * Macro to allocate named memory of sizeof(object_type)
+ */
 #define MALLOC_OBJECT(name,object_type)               ((object_type*)malloc_named(name,sizeof(object_type)))
 
+/**
+ * Get the offset (in bytes) of a member within a structure
+ */
 #define OFFSET(type, member)                          ((uint32_t)&((type *)0)->member)
 
+/**
+ * determine size (number of elements) in an array
+ */
 #define ARRAY_SIZE(a)                                ( sizeof(a) / sizeof(a[0]) )
+
+/**
+ * Macro to determine the element index in an array from the element address
+ */
 #define ARRAY_POSITION( array, element_pointer )     ( ((uint32_t)element_pointer - (uint32_t)array) / sizeof(array[0]) )
 
-/* Macros for comparing MAC addresses */
+/**
+ *  Macro for comparing MAC addresses
+ */
 #define CMP_MAC( a, b )  (((((unsigned char*)a)[0])==(((unsigned char*)b)[0]))&& \
                           ((((unsigned char*)a)[1])==(((unsigned char*)b)[1]))&& \
                           ((((unsigned char*)a)[2])==(((unsigned char*)b)[2]))&& \
@@ -85,6 +134,9 @@ static inline ALWAYS_INLINE uint32_t htobe32(uint32_t v)
                           ((((unsigned char*)a)[4])==(((unsigned char*)b)[4]))&& \
                           ((((unsigned char*)a)[5])==(((unsigned char*)b)[5])))
 
+/**
+ *  Macro for checking for NULL MAC addresses
+ */
 #define NULL_MAC( a )  (((((unsigned char*)a)[0])==0)&& \
                         ((((unsigned char*)a)[1])==0)&& \
                         ((((unsigned char*)a)[2])==0)&& \
@@ -98,6 +150,9 @@ static inline ALWAYS_INLINE uint32_t htobe32(uint32_t v)
 #define REGISTER_WRITE_WITH_BARRIER( type, address, value ) do {*(volatile type *)(address) = (type)(value); MEMORY_BARRIER_AGAINST_COMPILER_REORDERING();} while (0)
 #define REGISTER_READ( type, address )                      (*(volatile type *)(address))
 
+/**
+ * If condition is not true, jump to label
+ */
 #define wiced_jump_when_not_true( condition, label ) \
     do \
     { \
@@ -107,6 +162,9 @@ static inline ALWAYS_INLINE uint32_t htobe32(uint32_t v)
         } \
     } while(0)
 
+/**
+ * If condition is not true, perform action, then jump to label
+ */
 #define wiced_action_jump_when_not_true( condition, jump_label, action ) \
     do \
     { \
@@ -117,13 +175,18 @@ static inline ALWAYS_INLINE uint32_t htobe32(uint32_t v)
         } \
     } while(0)
 
-
+/**
+ * Memory Leak Check types
+ */
 typedef enum
 {
-    LEAK_CHECK_THREAD,
-    LEAK_CHECK_GLOBAL,
+    LEAK_CHECK_THREAD,  /**< Thread scope */
+    LEAK_CHECK_GLOBAL,  /**< Global scope */
 } leak_check_scope_t;
 
+/**
+ * Memory use debugging
+ */
 #ifdef WICED_ENABLE_MALLOC_DEBUG
 #include "malloc_debug.h"
 extern void malloc_print_mallocs           ( void );
@@ -143,7 +206,9 @@ extern void malloc_print_mallocs           ( void );
 #define malloc_debug_startup_finished( )
 #endif /* ifdef WICED_ENABLE_MALLOC_DEBUG */
 
-/* Define macros to assist operation on host MCUs that require aligned memory access */
+/**
+ *  Define macros to assist operation on host MCUs that require aligned memory access
+ */
 #ifndef WICED_HOST_REQUIRES_ALIGNED_MEMORY_ACCESS
 
 #define WICED_MEMCPY(destination, source, size)   memcpy(destination, source, size)
@@ -168,23 +233,35 @@ extern void malloc_print_mallocs           ( void );
  *                    Constants
  ******************************************************/
 
-#define WICED_NEVER_TIMEOUT   (0xFFFFFFFF)
-#define WICED_WAIT_FOREVER    (0xFFFFFFFF)
-#define WICED_NO_WAIT         (0)
+/**
+ * Semaphore wait time constants
+ */
+#define WICED_NEVER_TIMEOUT                         (0xFFFFFFFF)
+#define WICED_WAIT_FOREVER                          (0xFFFFFFFF)
+#define WICED_NO_WAIT                               (0)
+
+/**
+ * Maximum digits after decimal point for float output to string
+ */
 #define FLOAT_TO_STRING_MAX_FRACTION_SUPPORTED      (6)
 
-/* size  ascii printable string for an ethernet address */
-#define WICED_ETHER_ADDR_STR_LEN 18
-#define WICED_ETHER_ADDR_LEN      6
+/**
+ * Size of ascii printable string for a 6 octet ethernet address (including ending NULL)
+ */
+#define WICED_ETHER_ADDR_STR_LEN                    (18)
+#define WICED_ETHER_ADDR_LEN                        ( 6)
 
 /******************************************************
  *                   Enumerations
  ******************************************************/
 
+/**
+ * WEP key format
+ */
 typedef enum
 {
-    WEP_KEY_ASCII_FORMAT,
-    WEP_KEY_HEX_FORMAT,
+    WEP_KEY_ASCII_FORMAT,   /**< ASCII format */
+    WEP_KEY_HEX_FORMAT,     /**< HEX Format    */
 } wep_key_format_t;
 
 /******************************************************
@@ -217,30 +294,6 @@ typedef enum
  *
  */
 uint8_t string_to_unsigned( const char* string, uint8_t str_length, uint32_t* value_out, uint8_t is_hex );
-
-/**
- * Converts a unsigned long int to a decimal string
- *
- * @param value[in]      : The unsigned long to be converted
- * @param output[out]    : The buffer which will receive the decimal string
- * @param min_length[in] : the minimum number of characters to output (zero padding will apply if required)
- * @param max_length[in] : the maximum number of characters to output (up to 10 )
- *
- * @note: No trailing null is added.
- *
- * @return the number of characters returned.
- *
- */
-uint8_t unsigned_to_decimal_string( uint32_t value, char* output, uint8_t min_length, uint8_t max_length );
-
-/*!
- ******************************************************************************
- * Convert a decimal or hexidecimal string to an integer.
- *
- * @param[in] str  The string containing the value.
- *
- * @return    The value represented by the string.
- */
 
 /**
  * Converts a unsigned long int to a decimal string
@@ -347,11 +400,13 @@ static inline ALWAYS_INLINE char nibble_to_hexchar( uint8_t nibble )
 
 /**
  ******************************************************************************
- * Convert a nibble into a hex character
+ * Convert an ASCII hex character into a nibble
  *
- * @param[in] nibble  The value of the nibble in the lower 4 bits
+ * @param[in]  char     : The single hex character to convert to a nibble
+ * @param[out] nibble   : Pointer to store The value of the nibble in the lower 4 bits
  *
- * @return    The hex character corresponding to the nibble
+ * @return    0 = SUCCESS
+ *           -1 = not a hex character
  */
 static inline ALWAYS_INLINE char hexchar_to_nibble( char hexchar, uint8_t* nibble )
 {
@@ -469,6 +524,28 @@ char* wiced_ether_ntoa( const uint8_t *ea, char *buf, uint8_t buf_len );
 * @return    Number of char printed in buffer. On error, returns 0.
  */
 uint8_t float_to_string ( char* buffer, uint8_t buffer_len, float value, uint8_t resolution  );
+
+/*
+ ******************************************************************************
+ * Translate string in hex format E.g. "0xfffffffffffffff" or "ffffedfdfe" to equivalent binary format
+ *
+ * @param     ascii_buffer                String with hex value.
+ * @param     buffer                        Write the hex value represented in the string into this buffer in binary format.
+ * @param     buffer_length              Max length of the buffer.
+ *
+* @return    Number of uint8_t filled out in buffer. On error, returns 0.
+ */
+uint32_t wiced_ascii_to_hex( const char *ascii_buffer, uint8_t *buffer, uint32_t max_buffer_length );
+
+/**
+ * Change a nibble to a hex ascii character
+ */
+#define wiced_hex_nibble_to_ascii_char( cur_char ) (uint8_t)( (cur_char) < 10  ? ( (uint8_t)'0' +  (cur_char) ) : ( (uint8_t)'a' + ( (cur_char) - 10 ) ) )
+
+/**
+ * XOR Swap
+ */
+#define WICED_XOR_SWAP( val1, val2 )               do { val1 = val1 ^ val2; val2 = val1 ^ val2; val1 = val2 ^ val1; } while ( 0 )
 
 #ifdef __cplusplus
 } /*extern "C" */

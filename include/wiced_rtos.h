@@ -1,11 +1,34 @@
 /*
- * Broadcom Proprietary and Confidential. Copyright 2016 Broadcom
- * All Rights Reserved.
+ * Copyright 2016, Cypress Semiconductor Corporation or a subsidiary of 
+ * Cypress Semiconductor Corporation. All Rights Reserved.
+ * 
+ * This software, associated documentation and materials ("Software"),
+ * is owned by Cypress Semiconductor Corporation
+ * or one of its subsidiaries ("Cypress") and is protected by and subject to
+ * worldwide patent protection (United States and foreign),
+ * United States copyright laws and international treaty provisions.
+ * Therefore, you may use this Software only as provided in the license
+ * agreement accompanying the software package from which you
+ * obtained this Software ("EULA").
+ * If no EULA applies, Cypress hereby grants you a personal, non-exclusive,
+ * non-transferable license to copy, modify, and compile the Software
+ * source code solely for use in connection with Cypress's
+ * integrated circuit products. Any reproduction, modification, translation,
+ * compilation, or representation of this Software except as specified
+ * above is prohibited without the express written permission of Cypress.
  *
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * Disclaimer: THIS SOFTWARE IS PROVIDED AS-IS, WITH NO WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, NONINFRINGEMENT, IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Cypress
+ * reserves the right to make changes to the Software without notice. Cypress
+ * does not assume any liability arising out of the application or use of the
+ * Software or any product or circuit described in the Software. Cypress does
+ * not authorize its products for use in any products where a malfunction or
+ * failure of the Cypress product may reasonably be expected to result in
+ * significant property damage, injury or death ("High Risk Product"). By
+ * including Cypress's product in a High Risk Product, the manufacturer
+ * of such system or application assumes all risk of such use and in doing
+ * so agrees to indemnify Cypress against all liability.
  */
 
 /** @file
@@ -75,12 +98,12 @@ typedef void (*wiced_thread_function_t)( wiced_thread_arg_t arg );
  *
  * Creates and starts a new thread
  *
- * @param thread     : Pointer to variable that will receive the thread handle
- * @param priority   : A priority number or WICED_DEFAULT_APP_THREAD_PRIORITY.
- * @param name       : a text name for the thread (can be null)
- * @param function   : the main thread function
- * @param stack_size : stack size for this thread
- * @param arg        : argument which will be passed to thread function
+ * @param[out] thread     : Pointer to variable that will receive the thread handle
+ * @param[in]  priority   : A priority number or WICED_DEFAULT_APP_THREAD_PRIORITY.
+ * @param[in]  name       : A text name for the thread (can be null)
+ * @param[in]  function   : The main thread function
+ * @param[in]  stack_size : Stack size for this thread
+ * @param[in]  arg        : Argument which will be passed to thread function
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -92,13 +115,13 @@ wiced_result_t wiced_rtos_create_thread( wiced_thread_t* thread, uint8_t priorit
  *
  * Creates and starts a new thread with user provided stack
  *
- * @param thread     : Pointer to variable that will receive the thread handle
- * @param priority   : A priority number or WICED_DEFAULT_APP_THREAD_PRIORITY.
- * @param name       : a text name for the thread (can be null)
- * @param function   : the main thread function
- * @param stack      : the stack for this thread
- * @param stack_size : stack size for this thread
- * @param arg        : argument which will be passed to thread function
+ * @param[out] thread     : Pointer to variable that will receive the thread handle
+ * @param[in]  priority   : A priority number or WICED_DEFAULT_APP_THREAD_PRIORITY.
+ * @param[in]  name       : A text name for the thread (can be null)
+ * @param[in]  function   : The main thread function
+ * @param[in]  stack      : The stack for this thread
+ * @param[in]  stack_size : Stack size for this thread
+ * @param[in]  arg        : Argument which will be passed to thread function
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -108,7 +131,7 @@ wiced_result_t wiced_rtos_create_thread_with_stack( wiced_thread_t* thread, uint
 
 /** Deletes a terminated thread
  *
- * @param thread     : the handle of the thread to delete
+ * @param[in] thread     : The handle of the thread to delete
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -122,7 +145,7 @@ wiced_result_t wiced_rtos_delete_thread( wiced_thread_t* thread );
  * specified number of milliseconds. If the processor is heavily loaded
  * with higher priority tasks, the delay may be much longer than requested.
  *
- * @param milliseconds : the time to sleep in milliseconds
+ * @param[in] milliseconds : The time to sleep in milliseconds
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -138,7 +161,7 @@ wiced_result_t wiced_rtos_delay_milliseconds( uint32_t milliseconds );
  * NOTE: All threads with equal or lower priority than the current thread
  *       will not be able to run while the delay is occurring.
  *
- * @param microseconds : the time to delay in microseconds
+ * @param[in] microseconds : The time to delay in microseconds
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -152,7 +175,7 @@ wiced_result_t wiced_rtos_delay_microseconds( uint32_t microseconds );
  * with higher priority tasks, this thread may not wake until significantly
  * after the thread termination.
  *
- * @param thread : the handle of the other thread which will terminate
+ * @param[in] thread : The handle of the other thread which will terminate
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -166,7 +189,7 @@ wiced_result_t wiced_rtos_thread_join( wiced_thread_t* thread );
  * cause an error or timeout in that thread, since the task it was waiting on
  * is not complete.
  *
- * @param thread : the handle of the other thread which will be woken
+ * @param[in] thread : The handle of the other thread which will be woken
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -178,7 +201,7 @@ wiced_result_t wiced_rtos_thread_force_awake( wiced_thread_t* thread );
  *
  * Checks if a specified thread is the currently running thread
  *
- * @param thread : the handle of the other thread against which the current thread will be compared
+ * @param[in] thread : The handle of the other thread against which the current thread will be compared
  *
  * @return    WICED_SUCCESS : specified thread is the current thread
  * @return    WICED_ERROR   : specified thread is not currently running
@@ -209,7 +232,7 @@ wiced_result_t wiced_rtos_check_stack( void );
  *
  * Initialises a counting semaphore
  *
- * @param semaphore : a pointer to the semaphore handle to be initialised
+ * @param[in] semaphore : A pointer to the semaphore handle to be initialised
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -221,7 +244,7 @@ wiced_result_t wiced_rtos_init_semaphore( wiced_semaphore_t* semaphore );
  *
  * Set (post/put/increment) a semaphore
  *
- * @param semaphore : a pointer to the semaphore handle to be set
+ * @param[in] semaphore : A pointer to the semaphore handle to be set
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -235,8 +258,8 @@ wiced_result_t wiced_rtos_set_semaphore( wiced_semaphore_t* semaphore );
  * then the calling thread will be suspended until another thread sets the
  * semaphore with @ref wiced_rtos_set_semaphore
  *
- * @param semaphore : a pointer to the semaphore handle
- * @param timeout_ms: the number of milliseconds to wait before returning
+ * @param[in] semaphore : A pointer to the semaphore handle
+ * @param[in] timeout_ms: The number of milliseconds to wait before returning
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -248,7 +271,7 @@ wiced_result_t wiced_rtos_get_semaphore( wiced_semaphore_t* semaphore, uint32_t 
  *
  * Deletes a semaphore created with @ref wiced_rtos_init_semaphore
  *
- * @param semaphore : a pointer to the semaphore handle
+ * @param[in] semaphore : A pointer to the semaphore handle
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -274,7 +297,7 @@ wiced_result_t wiced_rtos_deinit_semaphore( wiced_semaphore_t* semaphore );
  * the lock on the mutex can request the lock again (nested) without causing
  * it to be suspended.
  *
- * @param mutex : a pointer to the mutex handle to be initialised
+ * @param[in] mutex : A pointer to the mutex handle to be initialised
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -288,7 +311,7 @@ wiced_result_t wiced_rtos_init_mutex( wiced_mutex_t* mutex );
  * by another thead, the calling thread will be suspended until
  * the mutex lock is released by the other thread.
  *
- * @param mutex : a pointer to the mutex handle to be locked
+ * @param[in] mutex : A pointer to the mutex handle to be locked
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -301,7 +324,7 @@ wiced_result_t wiced_rtos_lock_mutex( wiced_mutex_t* mutex );
  * Releases a currently held lock on a mutex. If another thread
  * is waiting on the mutex lock, then it will be resumed.
  *
- * @param mutex : a pointer to the mutex handle to be unlocked
+ * @param[in] mutex : A pointer to the mutex handle to be unlocked
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -313,7 +336,7 @@ wiced_result_t wiced_rtos_unlock_mutex( wiced_mutex_t* mutex );
  *
  * Deletes a mutex created with @ref wiced_rtos_init_mutex
  *
- * @param mutex : a pointer to the mutex handle
+ * @param[in] mutex : A pointer to the mutex handle
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -337,10 +360,10 @@ wiced_result_t wiced_rtos_deinit_mutex( wiced_mutex_t* mutex );
  *
  * Initialises a FIFO queue
  *
- * @param queue : a pointer to the queue handle to be initialised
- * @param name  : a text string name for the queue (NULL is allowed)
- * @param message_size : size in bytes of objects that will be held in the queue
- * @param number_of_messages : depth of the queue - i.e. max number of objects in the queue
+ * @param[in] queue              : A pointer to the queue handle to be initialised
+ * @param[in] name               : A text string name for the queue (NULL is allowed)
+ * @param[in] message_size       : Size in bytes of objects that will be held in the queue
+ * @param[in] number_of_messages : Depth of the queue - i.e. max number of objects in the queue
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -352,10 +375,10 @@ wiced_result_t wiced_rtos_init_queue( wiced_queue_t* queue, const char* name, ui
  *
  * Pushes an object onto a queue
  *
- * @param queue : a pointer to the queue handle
- * @param message : the object to be added to the queue. Size is assumed to be
- *                  the size specified in @ref wiced_rtos_init_queue
- * @param timeout_ms: the number of milliseconds to wait before returning
+ * @param[in] queue      : A pointer to the queue handle
+ * @param[in] message    : The object to be added to the queue. Size is assumed to be
+ *                         the size specified in @ref wiced_rtos_init_queue
+ * @param[in] timeout_ms : The number of milliseconds to wait before returning
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error or timeout occurred
@@ -367,13 +390,13 @@ wiced_result_t wiced_rtos_push_to_queue( wiced_queue_t* queue, void* message, ui
  *
  * Pops an object off a queue
  *
- * @param queue : a pointer to the queue handle
- * @param message : pointer to a buffer that will receive the object being
- *                  popped off the queue. Size is assumed to be
- *                  the size specified in @ref wiced_rtos_init_queue , hence
- *                  you must ensure the buffer is long enough or memory
- *                  corruption will result
- * @param timeout_ms: the number of milliseconds to wait before returning
+ * @param[in] queue      : A pointer to the queue handle
+ * @param[out] message   : Pointer to a buffer that will receive the object being
+ *                         popped off the queue. Size is assumed to be
+ *                         the size specified in @ref wiced_rtos_init_queue, hence
+ *                         you must ensure the buffer is long enough or memory
+ *                         corruption will result
+ * @param[in] timeout_ms : The number of milliseconds to wait before returning
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error or timeout occurred
@@ -385,7 +408,7 @@ wiced_result_t wiced_rtos_pop_from_queue( wiced_queue_t* queue, void* message, u
  *
  * Deletes a queue created with @ref wiced_rtos_init_queue
  *
- * @param queue : a pointer to the queue handle
+ * @param[in] queue : A pointer to the queue handle
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -395,7 +418,7 @@ wiced_result_t wiced_rtos_deinit_queue( wiced_queue_t* queue );
 
 /** Check if a queue is empty
  *
- * @param queue : a pointer to the queue handle
+ * @param[in] queue : A pointer to the queue handle
  *
  * @return    WICED_SUCCESS : queue is empty.
  * @return    WICED_ERROR   : queue is not empty.
@@ -405,7 +428,7 @@ wiced_result_t wiced_rtos_is_queue_empty( wiced_queue_t* queue );
 
 /** Check if a queue is full
  *
- * @param queue : a pointer to the queue handle
+ * @param[in] queue : A pointer to the queue handle
  *
  * @return    WICED_SUCCESS : queue is full.
  * @return    WICED_ERROR   : queue is not full.
@@ -415,8 +438,8 @@ wiced_result_t wiced_rtos_is_queue_full( wiced_queue_t* queue );
 
 /** Get the queue occupancy
  *
- * @param queue : a pointer to the queue handle
- * @param count : pointer to integer for storing occupancy count
+ * @param[in]  queue : A pointer to the queue handle
+ * @param[out] count : Pointer to integer for storing occupancy count
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -443,12 +466,12 @@ wiced_result_t wiced_rtos_get_queue_occupancy( wiced_queue_t* queue, uint32_t *c
  * Initialises a RTOS timer
  * Timer does not start running until @ref wiced_rtos_start_timer is called
  *
- * @param timer    : a pointer to the timer handle to be initialised
- * @param time_ms  : Timer period in milliseconds
- * @param function : the callback handler function that is called each
- *                   time the timer expires
- * @param arg      : an argument that will be passed to the callback
- *                   function
+ * @param[in] timer    : A pointer to the timer handle to be initialised
+ * @param[in] time_ms  : Timer period in milliseconds
+ * @param[in] function : The callback handler function that is called each
+ *                       time the timer expires
+ * @param[in] arg      : An argument that will be passed to the callback
+ *                       function
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -461,7 +484,7 @@ wiced_result_t wiced_rtos_init_timer( wiced_timer_t* timer, uint32_t time_ms, ti
  * Starts a RTOS timer running. Timer must have been previously
  * initialised with @ref wiced_rtos_init_timer
  *
- * @param timer    : a pointer to the timer handle to start
+ * @param[in] timer    : A pointer to the timer handle to start
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -474,7 +497,7 @@ wiced_result_t wiced_rtos_start_timer( wiced_timer_t* timer );
  * Stops a running RTOS timer. Timer must have been previously
  * started with @ref wiced_rtos_start_timer
  *
- * @param timer    : a pointer to the timer handle to stop
+ * @param[in] timer    : A pointer to the timer handle to stop
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -486,7 +509,7 @@ wiced_result_t wiced_rtos_stop_timer( wiced_timer_t* timer );
  *
  * Deletes a RTOS timer created with @ref wiced_rtos_init_timer
  *
- * @param timer : a pointer to the RTOS timer handle
+ * @param[in] timer : A pointer to the RTOS timer handle
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -496,7 +519,7 @@ wiced_result_t wiced_rtos_deinit_timer( wiced_timer_t* timer );
 
 /** Check if an RTOS timer is running
  *
- * @param timer : a pointer to the RTOS timer handle
+ * @param[in] timer : A pointer to the RTOS timer handle
  *
  * @return    WICED_SUCCESS : if running.
  * @return    WICED_ERROR   : if not running
@@ -521,10 +544,10 @@ wiced_result_t wiced_rtos_is_timer_running( wiced_timer_t* timer );
  * A worker thread is a thread in whose context timed and asynchronous events
  * execute.
  *
- * @param worker_thread    : a pointer to the worker thread to be created
- * @param priority         : thread priority
- * @param stack_size       : thread's stack size in number of bytes
- * @param event_queue_size : number of events can be pushed into the queue
+ * @param[in] worker_thread    : A pointer to the worker thread to be created
+ * @param[in] priority         : Thread priority
+ * @param[in] stack_size       : Thread's stack size in number of bytes
+ * @param[in] event_queue_size : Number of events can be pushed into the queue
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -536,7 +559,7 @@ wiced_result_t wiced_rtos_create_worker_thread( wiced_worker_thread_t* worker_th
  *
  * Deletes a worker thread
  *
- * @param worker_thread : a pointer to the worker thread to be created
+ * @param[in] worker_thread : A pointer to the worker thread to be created
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -561,13 +584,13 @@ wiced_result_t wiced_rtos_delete_worker_thread( wiced_worker_thread_t* worker_th
  * interval. Since this is based on the RTOS time-slice scheduling, the
  * accuracy is not high, and is affected by processor load.
  *
- * @param event_object  : pointer to a event handle which will be initialised
- * @param worker_thread : pointer to the worker thread in whose context the
- *                        callback function runs on
- * @param function      : the callback function that is to be called regularly
- * @param time_ms       : the time period between function calls in milliseconds
- * @param arg           : an argument that will be supplied to the function when
- *                        it is called
+ * @param[in] event_object  : Pointer to a event handle which will be initialised
+ * @param[in] worker_thread : Pointer to the worker thread in whose context the
+ *                            callback function runs on
+ * @param[in] function      : The callback function that is to be called regularly
+ * @param[in] time_ms       : The time period between function calls in milliseconds
+ * @param[in] arg           : An argument that will be supplied to the function when
+ *                            it is called
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -580,7 +603,7 @@ wiced_result_t wiced_rtos_register_timed_event( wiced_timed_event_t* event_objec
  * This function de-registers a function that has previously been set-up
  * with @ref wiced_rtos_register_timed_event.
  *
- * @param event_object : the event handle used with @ref wiced_rtos_register_timed_event
+ * @param[in] event_object : The event handle used with @ref wiced_rtos_register_timed_event
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -592,9 +615,9 @@ wiced_result_t wiced_rtos_deregister_timed_event( wiced_timed_event_t* event_obj
  *
  * Sends an asynchronous event to the associated worker thread
  *
- * @param worker_thread :the worker thread in which context the callback should execute from
- * @param function      : the callback function to be called from the worker thread
- * @param arg           : the argument to be passed to the callback function
+ * @param[in] worker_thread : The worker thread in which context the callback should execute from
+ * @param[in] function      : The callback function to be called from the worker thread
+ * @param[in] arg           : The argument to be passed to the callback function
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -615,8 +638,8 @@ wiced_result_t wiced_rtos_send_asynchronous_event( wiced_worker_thread_t* worker
 
 /** Initialise an event flags
  *
- * @param event_flags : a pointer to the event flags handle
- *
+ * @param[in] event_flags : A pointer to the event flags handle
+S *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
  */
@@ -625,12 +648,12 @@ wiced_result_t wiced_rtos_init_event_flags( wiced_event_flags_t* event_flags );
 
 /** Wait for event flags to be set
  *
- * @param event_flags        : a pointer to the event flags handle
- * @param flags_to_wait_for  : a group of event flags (ORed bit-fields) to wait for
- * @param flags_set          : event flag(s) set
- * @param clear_set_flags    : option to clear set flag(s)
- * @param wait_option        : wait option
- * @param timeout_ms         : timeout in milliseconds
+ * @param[in]  event_flags        : Pointer to the event flags handle
+ * @param[in]  flags_to_wait_for  : Group of event flags (ORed bit-fields) to wait for
+ * @param[out] flags_set          : Event flag(s) set
+ * @param[in]  clear_set_flags    : TRUE to clear set flag, FALSE leaves flags unchanged.
+ * @param[in]  wait_option        : Wait option
+ * @param[in]  timeout_ms         : Timeout in milliseconds
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -640,8 +663,8 @@ wiced_result_t wiced_rtos_wait_for_event_flags( wiced_event_flags_t* event_flags
 
 /** Set event flags
  *
- * @param event_flags  : a pointer to the event flags handle
- * @param flags_to_set : a group of event flags (ORed bit-fields) to set
+ * @param[in] event_flags  : Pointer to the event flags handle
+ * @param[in] flags_to_set : Group of event flags (ORed bit-fields) to set
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
@@ -651,7 +674,7 @@ wiced_result_t wiced_rtos_set_event_flags( wiced_event_flags_t* event_flags, uin
 
 /** De-initialise an event flags
  *
- * @param event_flags : a pointer to the event flags handle
+ * @param[in] event_flags : Pointer to the event flags handle
  *
  * @return    WICED_SUCCESS : on success.
  * @return    WICED_ERROR   : if an error occurred
